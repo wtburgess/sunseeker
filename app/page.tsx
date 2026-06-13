@@ -1,65 +1,675 @@
-import Image from "next/image";
+"use client";
+
+import dynamic from "next/dynamic";
+import { useState } from "react";
+import { Icon } from "./components/Icon";
+import { TopAppBar } from "./components/TopAppBar";
+import { geocode } from "./lib/geo";
+import {
+  conditionFromCode,
+  planTrip,
+  type DayForecast,
+  type Preferences,
+  type ScoredCity,
+} from "./lib/weather";
+
+const ResultsMap = dynamic(() => import("./components/ResultsMap"), {
+  ssr: false,
+  loading: () => (
+    <div className="h-[60vh] flex items-center justify-center text-outline font-label-lg text-label-lg uppercase tracking-widest">
+      Kaart laden…
+    </div>
+  ),
+});
+
+type View = "input" | "results";
+type OriginCoords = { lat: number; lon: number };
 
 export default function Home() {
+  const [view, setView] = useState<View>("input");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [results, setResults] = useState<ScoredCity[]>([]);
+  const [resolvedOrigin, setResolvedOrigin] = useState("");
+  const [originCoords, setOriginCoords] = useState<OriginCoords | null>(null);
+
+  const [origin, setOrigin] = useState("");
+  const [tripDays, setTripDays] = useState<7 | 14>(7);
+  const [minTemp, setMinTemp] = useState(22);
+  const [maxDistance, setMaxDistance] = useState(1000);
+  const [wantSun, setWantSun] = useState(true);
+  const [wantDry, setWantDry] = useState(true);
+
+  async function handleSearch() {
+    if (!origin.trim()) {
+      setError("Vul eerst je vertrekpunt in.");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const place = await geocode(origin.trim());
+      if (!place) {
+        setError(`We vonden geen plaats voor “${origin}”. Probeer een stad.`);
+        return;
+      }
+      const prefs: Preferences = {
+        minTemp,
+        wantSun,
+        wantDry,
+        tripDays,
+        maxDistanceKm: maxDistance,
+      };
+      const ranked = await planTrip(place, prefs);
+      setResults(ranked);
+      setResolvedOrigin(`${place.name}, ${place.country}`);
+      setOriginCoords({ lat: place.lat, lon: place.lon });
+      setView("results");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Kon het weer niet ophalen.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <div className="flex flex-col min-h-screen">
+      <TopAppBar />
+      {view === "input" ? (
+        <InputScreen
+          origin={origin}
+          setOrigin={setOrigin}
+          tripDays={tripDays}
+          setTripDays={setTripDays}
+          minTemp={minTemp}
+          setMinTemp={setMinTemp}
+          maxDistance={maxDistance}
+          setMaxDistance={setMaxDistance}
+          wantSun={wantSun}
+          setWantSun={setWantSun}
+          wantDry={wantDry}
+          setWantDry={setWantDry}
+          loading={loading}
+          error={error}
+          onSearch={handleSearch}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
+      ) : (
+        <ResultsScreen
+          results={results}
+          origin={resolvedOrigin}
+          originCoords={originCoords}
+          tripDays={tripDays}
+          minTemp={minTemp}
+          wantSun={wantSun}
+          wantDry={wantDry}
+          maxDistance={maxDistance}
+          onBack={() => setView("input")}
+        />
+      )}
     </div>
   );
 }
+
+/* ── Inputscherm ───────────────────────────────────────────────────────── */
+type InputProps = {
+  origin: string;
+  setOrigin: (v: string) => void;
+  tripDays: 7 | 14;
+  setTripDays: (v: 7 | 14) => void;
+  minTemp: number;
+  setMinTemp: (v: number) => void;
+  maxDistance: number;
+  setMaxDistance: (v: number) => void;
+  wantSun: boolean;
+  setWantSun: (v: boolean) => void;
+  wantDry: boolean;
+  setWantDry: (v: boolean) => void;
+  loading: boolean;
+  error: string | null;
+  onSearch: () => void;
+};
+
+function InputScreen(p: InputProps) {
+  return (
+    <>
+      <main className="flex-grow pt-md pb-40 px-container-margin max-w-2xl w-full mx-auto space-y-md">
+        {/* Vertrekpunt */}
+        <section className="space-y-sm">
+          <h2 className="font-headline-md text-headline-md text-on-surface-variant flex items-center gap-2">
+            <Icon name="near_me" />
+            Waar vertrek je?
+          </h2>
+          <div className="expedition-card stamp-shadow p-sm rounded-lg flex items-center gap-3">
+            <Icon name="location_on" className="text-primary" />
+            <input
+              value={p.origin}
+              onChange={(e) => p.setOrigin(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && p.onSearch()}
+              className="w-full bg-transparent border-none focus:ring-0 focus:outline-none font-body-lg text-body-lg placeholder:text-outline/50"
+              placeholder="Bv. Brussel, Antwerpen, Amsterdam…"
+              type="text"
+            />
+          </div>
+        </section>
+
+        {/* Duur + min. temperatuur */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
+          <section className="expedition-card stamp-shadow p-md rounded-lg space-y-sm">
+            <h3 className="font-label-lg text-label-lg uppercase tracking-widest text-outline">
+              Duur van de reis
+            </h3>
+            <div className="flex p-xs bg-surface-container-high rounded-sm">
+              {([7, 14] as const).map((d) => (
+                <button
+                  key={d}
+                  onClick={() => p.setTripDays(d)}
+                  className={`flex-1 py-base font-headline-sm text-headline-sm uppercase tracking-tighter transition-all duration-200 rounded-sm ${
+                    p.tripDays === d
+                      ? "bg-primary text-on-primary -rotate-1"
+                      : "text-on-surface-variant/60"
+                  }`}
+                >
+                  {d} Dagen
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="expedition-card stamp-shadow p-md rounded-lg space-y-sm">
+            <div className="flex justify-between items-baseline">
+              <h3 className="font-label-lg text-label-lg uppercase tracking-widest text-outline">
+                Min. temperatuur
+              </h3>
+              <span className="font-headline-sm text-headline-sm text-primary">
+                {p.minTemp}°C
+              </span>
+            </div>
+            <input
+              type="range"
+              min={5}
+              max={40}
+              value={p.minTemp}
+              onChange={(e) => p.setMinTemp(Number(e.target.value))}
+            />
+            <div className="flex justify-between text-[10px] uppercase font-bold text-outline/40 tracking-widest">
+              <span>Fris</span>
+              <span>Tropisch</span>
+            </div>
+          </section>
+        </div>
+
+        {/* Afstand */}
+        <section className="expedition-card stamp-shadow p-md rounded-lg space-y-sm">
+          <div className="flex justify-between items-baseline">
+            <h3 className="font-label-lg text-label-lg uppercase tracking-widest text-outline">
+              Max. afstand van hier
+            </h3>
+            <span className="font-headline-sm text-headline-sm text-primary">
+              {p.maxDistance} km
+            </span>
+          </div>
+          <input
+            type="range"
+            min={100}
+            max={1500}
+            step={50}
+            value={p.maxDistance}
+            onChange={(e) => p.setMaxDistance(Number(e.target.value))}
+          />
+          <div className="flex justify-between text-[10px] uppercase font-bold text-outline/40 tracking-widest">
+            <span>Dichtbij</span>
+            <span>Expeditie</span>
+          </div>
+        </section>
+
+        {/* Weersvoorkeuren */}
+        <section className="expedition-card stamp-shadow p-md rounded-lg space-y-md">
+          <div className="flex items-center gap-2 border-b border-outline-variant pb-sm">
+            <Icon name="wb_sunny" className="text-secondary" filled />
+            <h2 className="font-headline-md text-headline-md">
+              Wat is goed weer voor jou?
+            </h2>
+          </div>
+          <div className="flex flex-wrap gap-sm">
+            <PrefChip
+              label="Zonnig"
+              icon="sunny"
+              active={p.wantSun}
+              onClick={() => p.setWantSun(!p.wantSun)}
+            />
+            <PrefChip
+              label="Droog"
+              icon="water_drop"
+              active={p.wantDry}
+              onClick={() => p.setWantDry(!p.wantDry)}
+            />
+          </div>
+          <p className="font-label-sm text-label-sm text-outline">
+            Deze keuzes bepalen mee hoe we elke bestemming scoren.
+          </p>
+        </section>
+
+        {p.error && (
+          <p className="text-error font-label-lg text-label-lg flex items-center gap-2">
+            <Icon name="error" filled /> {p.error}
+          </p>
+        )}
+      </main>
+
+      {/* Actieknop */}
+      <footer className="fixed bottom-0 left-0 w-full p-container-margin z-50 bg-linear-to-t from-background via-background to-transparent">
+        <div className="max-w-2xl mx-auto">
+          <button
+            onClick={p.onSearch}
+            disabled={p.loading}
+            className="w-full bg-primary text-on-primary py-md rounded-xl font-headline-md text-headline-md uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl active:scale-[0.98] transition-transform disabled:opacity-60"
+            style={{ clipPath: "polygon(0% 5%, 100% 0%, 98% 95%, 2% 100%)" }}
+          >
+            <Icon name={p.loading ? "hourglass_top" : "filter_drama"} />
+            {p.loading ? "Weer zoeken…" : "Toon goed weer"}
+          </button>
+        </div>
+      </footer>
+    </>
+  );
+}
+
+function PrefChip({
+  label,
+  icon,
+  active,
+  onClick,
+}: {
+  label: string;
+  icon: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`flex items-center gap-2 px-md py-sm rounded-full border transition-colors ${
+        active
+          ? "bg-secondary-container border-secondary text-on-secondary-container"
+          : "bg-surface-container-high border-outline-variant hover:border-primary"
+      }`}
+    >
+      <Icon name={icon} filled={active} />
+      <span className="font-label-lg text-label-lg uppercase">{label}</span>
+    </button>
+  );
+}
+
+/* ── Resultatenscherm ──────────────────────────────────────────────────── */
+function ResultsScreen({
+  results,
+  origin,
+  originCoords,
+  tripDays,
+  minTemp,
+  wantSun,
+  wantDry,
+  maxDistance,
+  onBack,
+}: {
+  results: ScoredCity[];
+  origin: string;
+  originCoords: OriginCoords | null;
+  tripDays: number;
+  minTemp: number;
+  wantSun: boolean;
+  wantDry: boolean;
+  maxDistance: number;
+  onBack: () => void;
+}) {
+  const top = results.slice(0, 20);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [showInfo, setShowInfo] = useState(false);
+  const [resultView, setResultView] = useState<"list" | "map">("list");
+
+  return (
+    <main className="flex-grow pt-md pb-24 px-container-margin max-w-2xl w-full mx-auto space-y-md">
+      <div className="flex justify-between items-end border-b-2 border-primary-container/20 pb-base">
+        <div>
+          <h2 className="font-headline-md text-headline-md uppercase tracking-tight flex items-center gap-1">
+            Beste matches
+            <button
+              onClick={() => setShowInfo((v) => !v)}
+              aria-label="Hoe wordt de score berekend?"
+              className={`active-press transition-colors ${
+                showInfo ? "text-primary" : "text-outline hover:text-primary"
+              }`}
+            >
+              <Icon name="info" filled={showInfo} className="text-[20px]" />
+            </button>
+          </h2>
+          <p className="font-label-lg text-label-lg text-on-surface-variant flex items-center flex-wrap gap-x-2 gap-y-1">
+            <span className="flex items-center gap-1">
+              <Icon name="near_me" className="text-[16px]" /> {origin}
+            </span>
+            <span className="opacity-40">|</span>
+            <span className="flex items-center gap-1">
+              <Icon name="event" className="text-[16px]" /> {tripDays}d
+            </span>
+            <span className="opacity-40">|</span>
+            <span className="flex items-center gap-1">
+              <Icon name="explore" className="text-[16px]" /> ≤{maxDistance} km
+            </span>
+            <span className="opacity-40">|</span>
+            <span className="flex items-center gap-1">
+              <Icon name="thermostat" className="text-[16px]" /> {minTemp}°C
+            </span>
+            {wantSun && (
+              <span className="flex items-center gap-1">
+                <Icon name="sunny" className="text-[16px]" />
+              </span>
+            )}
+            {wantDry && (
+              <span className="flex items-center gap-1">
+                <Icon name="water_drop" className="text-[16px]" />
+              </span>
+            )}
+          </p>
+        </div>
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1 font-label-sm text-label-sm uppercase text-primary font-bold active-press flex-shrink-0"
+        >
+          <Icon name="tune" /> Wijzig
+        </button>
+      </div>
+
+      {/* Lijst / Kaart-toggle */}
+      {top.length > 0 && (
+        <div className="flex p-xs bg-surface-container-high rounded-sm">
+          {(
+            [
+              ["list", "Lijst", "format_list_bulleted"],
+              ["map", "Kaart", "map"],
+            ] as const
+          ).map(([key, label, icon]) => (
+            <button
+              key={key}
+              onClick={() => setResultView(key)}
+              className={`flex-1 flex items-center justify-center gap-1 py-base font-label-lg text-label-lg uppercase tracking-widest transition-all duration-200 rounded-sm ${
+                resultView === key
+                  ? "bg-primary text-on-primary"
+                  : "text-on-surface-variant/60"
+              }`}
+            >
+              <Icon name={icon} className="text-[18px]" /> {label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {showInfo && <ScoreInfo wantSun={wantSun} wantDry={wantDry} />}
+
+      {top.length === 0 ? (
+        <div className="text-center py-lg space-y-2 text-on-surface-variant">
+          <Icon name="travel_explore" className="text-[40px] text-outline" />
+          <p className="font-headline-sm text-headline-sm uppercase">
+            Geen bestemmingen in bereik
+          </p>
+          <p className="font-body-md text-sm">
+            Verhoog de maximale afstand en probeer opnieuw.
+          </p>
+        </div>
+      ) : resultView === "map" && originCoords ? (
+        <ResultsMap
+          results={results}
+          origin={{ ...originCoords, label: origin }}
+        />
+      ) : (
+        <div className="space-y-gutter">
+          {top.map((r, i) => (
+            <ResultCard
+              key={r.city.id}
+              result={r}
+              rank={i + 1}
+              expanded={openId === r.city.id}
+              onToggle={() =>
+                setOpenId((cur) => (cur === r.city.id ? null : r.city.id))
+              }
+            />
+          ))}
+        </div>
+      )}
+
+      <p className="text-center font-label-sm text-label-sm text-outline pt-base flex items-center justify-center gap-1">
+        <Icon name="bolt" className="text-[14px]" /> Live forecast via Open-Meteo
+      </p>
+    </main>
+  );
+}
+
+const fmtDate = (iso: string) =>
+  new Date(iso).toLocaleDateString("nl-BE", {
+    day: "numeric",
+    month: "short",
+  });
+
+function scoreStyles(score: number) {
+  if (score >= 8)
+    return {
+      badge:
+        "bg-secondary-container text-on-secondary-container border-secondary",
+      patch:
+        "bg-secondary-container border-secondary text-on-secondary-container",
+    };
+  if (score >= 6)
+    return {
+      badge: "bg-surface-container-highest text-on-surface border-outline",
+      patch: "bg-surface-container-highest border-outline text-tertiary",
+    };
+  return {
+    badge: "bg-surface-variant text-on-surface-variant border-outline",
+    patch: "bg-surface-variant border-outline text-on-surface-variant",
+  };
+}
+
+function ScoreInfo({
+  wantSun,
+  wantDry,
+}: {
+  wantSun: boolean;
+  wantDry: boolean;
+}) {
+  return (
+    <div className="border-2 border-dashed border-outline-variant bg-surface-container-highest rounded-lg p-md space-y-sm">
+      <h4 className="font-headline-sm text-headline-sm uppercase text-primary flex items-center gap-2">
+        <Icon name="calculate" /> Hoe de score werkt
+      </h4>
+      <p className="font-body-md text-sm text-on-surface-variant">
+        Elke dag krijgt een cijfer van 0 tot 10 op basis van drie factoren. De
+        eindscore is het gemiddelde van je{" "}
+        <strong>beste aaneengesloten dagen</strong> binnen het reisvenster — één
+        natte dag verpest het dus niet.
+      </p>
+      <ul className="space-y-2 font-body-md text-sm">
+        <li className="flex gap-2">
+          <Icon name="thermostat" className="text-primary text-sm" />
+          <span>
+            <strong>Temperatuur</strong> — warm genoeg t.o.v. jouw minimum telt
+            vol mee; kouder zakt snel.
+          </span>
+        </li>
+        <li className="flex gap-2">
+          <Icon name="sunny" className="text-secondary text-sm" filled />
+          <span>
+            <strong>Zon</strong> — minder bewolking = hoger
+            {wantSun ? " (zwaarder, want je koos “zonnig”)" : ""}.
+          </span>
+        </li>
+        <li className="flex gap-2">
+          <Icon name="water_drop" className="text-tertiary text-sm" />
+          <span>
+            <strong>Droog</strong> — neerslag en regenkans drukken de score
+            {wantDry ? " (zwaarder, want je koos “droog”)" : ""}.
+          </span>
+        </li>
+      </ul>
+    </div>
+  );
+}
+
+function ResultCard({
+  result,
+  rank,
+  expanded,
+  onToggle,
+}: {
+  result: ScoredCity;
+  rank: number;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const { city, distanceKm, score, condition } = result;
+  const styles = scoreStyles(score);
+
+  return (
+    <article className="bg-surface border border-outline-variant rounded-xl stamp-shadow overflow-hidden">
+      <button
+        onClick={onToggle}
+        aria-expanded={expanded}
+        className="w-full text-left flex gap-md items-start p-md hover:bg-surface-container-high/50 transition-colors"
+      >
+        {/* Weerpatch + rang */}
+        <div className="flex-shrink-0">
+          <div
+            className={`relative w-14 h-14 rounded-full stamped-badge border-2 flex items-center justify-center ${condition.patch}`}
+          >
+            <Icon
+              name={condition.icon}
+              filled={condition.filled}
+              className="text-[28px]"
+            />
+            <span className="absolute -top-1 -left-1 w-6 h-6 bg-primary text-on-primary rounded-full flex items-center justify-center font-headline-sm text-label-sm border-2 border-surface">
+              {rank}
+            </span>
+          </div>
+        </div>
+
+        {/* Info */}
+        <div className="flex-grow min-w-0">
+          <div className="flex justify-between items-start gap-2">
+            <div className="min-w-0">
+              <h3 className="font-headline-sm text-headline-sm uppercase truncate">
+                {city.name}
+              </h3>
+              <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-widest">
+                {city.country} · {distanceKm} km
+              </span>
+            </div>
+            <div className="text-right flex-shrink-0">
+              <span className="font-headline-md text-headline-md text-primary">
+                {result.avgTempMax}°
+              </span>
+              <span className="block text-xs uppercase font-label-sm opacity-60">
+                {condition.label}
+              </span>
+            </div>
+          </div>
+
+          <p className="mt-1 font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
+            <Icon name="wb_sunny" className="text-sm" filled />
+            Beste {result.stretchDays} dagen: {fmtDate(result.stretchStart)} –{" "}
+            {fmtDate(result.stretchEnd)}
+          </p>
+
+          <div className="mt-base flex items-center justify-between border-t border-outline-variant pt-base font-label-sm text-label-sm text-on-surface-variant">
+            <div className="flex items-center gap-3">
+              <span className="flex items-center gap-1">
+                <Icon name="cloud" className="text-sm" /> {result.avgCloud}%
+              </span>
+              <span className="flex items-center gap-1">
+                <Icon name="rainy" className="text-sm" /> {result.totalPrecip} mm
+              </span>
+            </div>
+            <span className="flex items-center gap-1 text-primary uppercase font-bold">
+              Per dag
+              <Icon
+                name="expand_more"
+                className={`text-sm transition-transform ${
+                  expanded ? "rotate-180" : ""
+                }`}
+              />
+            </span>
+          </div>
+        </div>
+
+        {/* Score */}
+        <div
+          className={`flex-shrink-0 self-stretch w-16 rounded-lg border-2 flex flex-col items-center justify-center ${styles.badge}`}
+        >
+          <span className="font-headline-md text-headline-md leading-none">
+            {score.toFixed(1)}
+          </span>
+          <span className="font-label-sm text-[10px] uppercase tracking-widest">
+            Score
+          </span>
+        </div>
+      </button>
+
+      {expanded && <DayDetail days={result.days} />}
+    </article>
+  );
+}
+
+function DayDetail({ days }: { days: DayForecast[] }) {
+  return (
+    <div className="border-t-2 border-dashed border-outline-variant bg-surface-container-low px-md py-base">
+      <div className="flex flex-col">
+        {days.map((day) => (
+          <DayRow key={day.date} day={day} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DayRow({ day }: { day: DayForecast }) {
+  const cond = conditionFromCode(day.code);
+  return (
+    <div
+      className={`flex items-center gap-2 py-sm border-l-4 pl-2 ${
+        day.inStretch
+          ? "border-secondary bg-secondary-container/15"
+          : "border-transparent opacity-70"
+      }`}
+    >
+      <div className="w-12 flex-shrink-0">
+        <div className="font-label-sm text-label-sm uppercase tracking-wide">
+          {fmtWeekday(day.date)}
+        </div>
+        <div className="text-[10px] text-on-surface-variant">
+          {fmtDate(day.date)}
+        </div>
+      </div>
+      <Icon
+        name={cond.icon}
+        filled={cond.filled}
+        className={`text-[22px] flex-shrink-0 ${cond.iconColor}`}
+      />
+      <span className="font-headline-sm text-headline-sm w-9 flex-shrink-0">
+        {Math.round(day.tMax)}°
+      </span>
+      <div className="flex-grow flex items-center gap-2 text-xs text-on-surface-variant min-w-0">
+        <span className="flex items-center gap-0.5">
+          <Icon name="cloud" className="text-sm" />
+          {Math.round(day.cloud)}%
+        </span>
+        <span className="flex items-center gap-0.5">
+          <Icon name="rainy" className="text-sm" />
+          {day.precip}mm
+        </span>
+      </div>
+      <span className="w-8 text-right font-headline-sm text-headline-sm text-primary flex-shrink-0">
+        {day.score.toFixed(1)}
+      </span>
+    </div>
+  );
+}
+
+const fmtWeekday = (iso: string) =>
+  new Date(iso).toLocaleDateString("nl-BE", { weekday: "short" });
