@@ -20,7 +20,7 @@ type Props = {
 };
 
 /** Vanaf dit zoomniveau tonen markers ook het weericoon (anders enkel het cijfer). */
-const ZOOM_FULL = 6;
+const ZOOM_FULL = 5;
 
 /** Kleur (hex) van de score-badge — spiegelt de lijstweergave. */
 function scoreHex(score: number) {
