@@ -170,7 +170,7 @@ function InputScreen(p: InputProps) {
 
   return (
     <>
-      <main className="flex-grow pt-md pb-40 px-container-margin max-w-2xl w-full mx-auto space-y-md">
+      <main className="flex-grow pt-md pb-40 px-4 md:px-container-margin max-w-2xl w-full mx-auto space-y-md">
         {/* Vertrekpunt */}
         <section className="space-y-sm">
           <h2 className="font-headline-md text-headline-md text-on-surface-variant flex items-center gap-2">
@@ -379,7 +379,7 @@ function InputScreen(p: InputProps) {
       </main>
 
       {/* Actieknop */}
-      <footer className="fixed bottom-0 left-0 w-full p-container-margin z-50 bg-linear-to-t from-background via-background to-transparent">
+      <footer className="fixed bottom-0 left-0 w-full p-4 md:p-container-margin z-50 bg-linear-to-t from-background via-background to-transparent">
         <div className="max-w-2xl mx-auto">
           <button
             onClick={p.onSearch}
@@ -452,7 +452,7 @@ function ResultsScreen({
   const [resultView, setResultView] = useState<"list" | "map">("list");
 
   return (
-    <main className="flex-grow pt-md pb-24 px-container-margin max-w-2xl w-full mx-auto space-y-md">
+    <main className="flex-grow pt-md pb-24 px-4 md:px-container-margin max-w-2xl w-full mx-auto space-y-md">
       <div className="flex justify-between items-end border-b-2 border-primary-container/20 pb-base">
         <div>
           <h2 className="font-headline-md text-headline-md uppercase tracking-tight flex items-center gap-1">
@@ -665,7 +665,7 @@ function ResultCard({
       <button
         onClick={onToggle}
         aria-expanded={expanded}
-        className="w-full text-left flex gap-md items-start p-md hover:bg-surface-container-high/50 transition-colors"
+        className="w-full text-left flex gap-3 md:gap-md items-start p-3 md:p-md hover:bg-surface-container-high/50 transition-colors"
       >
         {/* Weerpatch + rang */}
         <div className="flex-shrink-0">
@@ -687,7 +687,7 @@ function ResultCard({
         <div className="flex-grow min-w-0">
           <div className="flex justify-between items-start gap-2">
             <div className="min-w-0">
-              <h3 className="font-headline-sm text-headline-sm uppercase truncate">
+              <h3 className="font-headline-sm text-headline-sm uppercase leading-tight">
                 {city.name}
               </h3>
               <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-widest">
@@ -733,7 +733,7 @@ function ResultCard({
 
         {/* Score */}
         <div
-          className={`flex-shrink-0 self-stretch w-16 rounded-lg border-2 flex flex-col items-center justify-center ${badgeCls}`}
+          className={`flex-shrink-0 self-stretch w-14 md:w-16 rounded-lg border-2 flex flex-col items-center justify-center ${badgeCls}`}
         >
           <span className="font-headline-md text-headline-md leading-none">
             {score.toFixed(1)}
@@ -751,7 +751,7 @@ function ResultCard({
 
 function DayDetail({ days }: { days: DayForecast[] }) {
   return (
-    <div className="border-t-2 border-dashed border-outline-variant bg-surface-container-low px-md py-base">
+    <div className="border-t-2 border-dashed border-outline-variant bg-surface-container-low px-3 md:px-md py-base">
       <div className="flex flex-col">
         {days.map((day) => (
           <DayRow key={day.date} day={day} />

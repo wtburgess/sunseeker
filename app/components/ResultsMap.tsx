@@ -24,14 +24,15 @@ function badgeIcon(score: number, iconName: string) {
   const { bg, fg, bd } = scoreHex(score);
   return L.divIcon({
     className: "",
-    html: `<div style="width:60px;height:26px;display:flex;align-items:center;
-      justify-content:center;gap:3px;border-radius:9999px;background:${bg};color:${fg};
-      border:2px solid ${bd};box-shadow:0 1px 4px rgba(0,0,0,.35);
-      font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:13px">
+    html: `<div style="width:40px;height:42px;display:flex;flex-direction:column;
+      align-items:center;justify-content:center;gap:1px;border-radius:11px;background:${bg};
+      color:${fg};border:2px solid ${bd};box-shadow:0 1px 4px rgba(0,0,0,.35);
+      font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:15px;line-height:1">
+      <span>${score.toFixed(1)}</span>
       <span style="font-family:'Material Symbols Outlined';font-size:15px;
-      font-variation-settings:'FILL' 1;line-height:1">${iconName}</span>${score.toFixed(1)}</div>`,
-    iconSize: [60, 26],
-    iconAnchor: [30, 13],
+      font-variation-settings:'FILL' 1;line-height:1">${iconName}</span></div>`,
+    iconSize: [40, 42],
+    iconAnchor: [20, 21],
   });
 }
 
