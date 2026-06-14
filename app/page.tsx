@@ -329,7 +329,7 @@ function InputScreen(p: InputProps) {
           >
             <Icon
               name={p.loading ? "progress_activity" : "filter_drama"}
-              className={p.loading ? "animate-spin" : ""}
+              className={p.loading ? "animate-spin" : "animate-float"}
             />
             {p.loading ? "Weer zoeken…" : "Toon goed weer"}
           </button>
@@ -353,9 +353,9 @@ function PrefChip({
   return (
     <button
       onClick={onClick}
-      className={`flex items-center gap-2 px-md py-sm rounded-full border transition-colors ${
+      className={`flex items-center gap-2 px-md py-sm rounded-full border transition-all ${
         active
-          ? "bg-secondary-container border-secondary text-on-secondary-container animate-pop"
+          ? "bg-secondary-container border-secondary text-on-secondary-container animate-pop -rotate-2"
           : "bg-surface-container-high border-outline-variant hover:border-primary"
       }`}
     >
@@ -604,7 +604,7 @@ function ResultCard({
 
   return (
     <article
-      className="bg-surface border border-outline-variant rounded-xl stamp-shadow overflow-hidden animate-stamp-in transition-transform duration-200 md:hover:-translate-y-0.5"
+      className="bg-surface border border-outline-variant rounded-xl stamp-shadow overflow-hidden animate-stamp-in transition-transform duration-200 md:hover:-translate-y-0.5 md:hover:rotate-[-0.6deg]"
       style={{ animationDelay: `${Math.min(rank - 1, 12) * 40}ms` }}
     >
       <button
@@ -622,7 +622,11 @@ function ResultCard({
               filled={condition.filled}
               className="text-[28px]"
             />
-            <span className="absolute -top-1 -left-1 w-6 h-6 bg-primary text-on-primary rounded-full flex items-center justify-center font-headline-sm text-label-sm border-2 border-surface">
+            <span
+              className={`absolute -top-1 -left-1 w-6 h-6 bg-primary text-on-primary rounded-full flex items-center justify-center font-headline-sm text-label-sm border-2 border-surface ${
+                rank === 1 ? "animate-wiggle" : ""
+              }`}
+            >
               {rank}
             </span>
           </div>

@@ -299,12 +299,42 @@ input[type="range"]::-moz-range-thumb {
   animation: compass-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+@keyframes wiggle {
+  0%,
+  100% {
+    transform: rotate(-6deg);
+  }
+  50% {
+    transform: rotate(6deg);
+  }
+}
+
+@keyframes float-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+.animate-wiggle {
+  animation: wiggle 1.6s ease-in-out infinite;
+}
+
+.animate-float {
+  animation: float-bob 2.4s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
   .animate-stamp-in,
   .animate-pop,
   .animate-pulse-glow,
-  .animate-compass-in {
+  .animate-compass-in,
+  .animate-wiggle,
+  .animate-float {
     animation: none;
   }
 }
