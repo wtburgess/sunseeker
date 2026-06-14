@@ -254,9 +254,57 @@ input[type="range"]::-moz-range-thumb {
   animation: stamp-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+@keyframes pop {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.09);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(254, 190, 78, 0);
+  }
+  50% {
+    box-shadow: 0 0 0 5px rgba(254, 190, 78, 0.5);
+  }
+}
+
+@keyframes compass-in {
+  from {
+    opacity: 0;
+    transform: rotate(-90deg) scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(0) scale(1);
+  }
+}
+
+.animate-pop {
+  animation: pop 0.3s ease-out;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 2.2s ease-in-out infinite;
+}
+
+.animate-compass-in {
+  animation: compass-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
-  .animate-stamp-in {
+  .animate-stamp-in,
+  .animate-pop,
+  .animate-pulse-glow,
+  .animate-compass-in {
     animation: none;
   }
 }

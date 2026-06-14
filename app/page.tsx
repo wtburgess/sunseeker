@@ -355,7 +355,7 @@ function PrefChip({
       onClick={onClick}
       className={`flex items-center gap-2 px-md py-sm rounded-full border transition-colors ${
         active
-          ? "bg-secondary-container border-secondary text-on-secondary-container"
+          ? "bg-secondary-container border-secondary text-on-secondary-container animate-pop"
           : "bg-surface-container-high border-outline-variant hover:border-primary"
       }`}
     >
@@ -678,7 +678,9 @@ function ResultCard({
 
         {/* Score */}
         <div
-          className={`flex-shrink-0 self-stretch w-14 md:w-16 rounded-lg border-2 flex flex-col items-center justify-center ${badgeCls}`}
+          className={`flex-shrink-0 self-stretch w-14 md:w-16 rounded-lg border-2 flex flex-col items-center justify-center ${badgeCls} ${
+          rank === 1 ? "animate-pulse-glow" : ""
+        }`}
         >
           <span className="font-headline-md text-headline-md leading-none">
             {score.toFixed(1)}
