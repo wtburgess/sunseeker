@@ -14,21 +14,24 @@ type Props = {
 
 /** Kleur (hex) van de score-badge — spiegelt de lijstweergave. */
 function scoreHex(score: number) {
-  if (score >= 8) return { bg: "#febe4e", fg: "#724d00", bd: "#7f5700" };
-  if (score >= 6) return { bg: "#e9e2d4", fg: "#1e1b13", bd: "#8a726b" };
-  return { bg: "#e0d9cc", fg: "#56423d", bd: "#8a726b" };
+  if (score >= 9) return { bg: "#fbbb4c", fg: "#5a3d00", bd: "#7f5700" }; // heel fel
+  if (score >= 8) return { bg: "#febe4e", fg: "#724d00", bd: "#7f5700" }; // fel
+  if (score >= 7) return { bg: "#ffdead", fg: "#724d00", bd: "#c79a4a" }; // zachter
+  return { bg: "#e0d9cc", fg: "#56423d", bd: "#8a726b" }; // grijs
 }
 
-function badgeIcon(score: number) {
+function badgeIcon(score: number, iconName: string) {
   const { bg, fg, bd } = scoreHex(score);
   return L.divIcon({
     className: "",
-    html: `<div style="width:34px;height:34px;border-radius:50%;display:flex;
-      align-items:center;justify-content:center;font-family:'Archivo Narrow',sans-serif;
-      font-weight:700;font-size:14px;background:${bg};color:${fg};border:2px solid ${bd};
-      box-shadow:0 1px 4px rgba(0,0,0,.35)">${score.toFixed(1)}</div>`,
-    iconSize: [34, 34],
-    iconAnchor: [17, 17],
+    html: `<div style="width:60px;height:26px;display:flex;align-items:center;
+      justify-content:center;gap:3px;border-radius:9999px;background:${bg};color:${fg};
+      border:2px solid ${bd};box-shadow:0 1px 4px rgba(0,0,0,.35);
+      font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:13px">
+      <span style="font-family:'Material Symbols Outlined';font-size:15px;
+      font-variation-settings:'FILL' 1;line-height:1">${iconName}</span>${score.toFixed(1)}</div>`,
+    iconSize: [60, 26],
+    iconAnchor: [30, 13],
   });
 }
 
@@ -134,7 +137,7 @@ export default function ResultsMap({ results, origin }: Props) {
               <Marker
                 key={r.city.id}
                 position={[r.city.lat, r.city.lon]}
-                icon={badgeIcon(score)}
+                icon={badgeIcon(score, cond.icon)}
               >
                 <Popup>
                   <strong style={{ textTransform: "uppercase" }}>

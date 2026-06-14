@@ -34,11 +34,14 @@ export default function Home() {
   const [originCoords, setOriginCoords] = useState<OriginCoords | null>(null);
 
   const [origin, setOrigin] = useState("");
-  const [tripDays, setTripDays] = useState<7 | 14>(7);
+  const [tripDays, setTripDays] = useState<number>(7);
+  const [customDays, setCustomDays] = useState(false);
   const [minTemp, setMinTemp] = useState(22);
   const [maxDistance, setMaxDistance] = useState(1000);
   const [wantSun, setWantSun] = useState(true);
   const [wantDry, setWantDry] = useState(true);
+  const [wantSnow, setWantSnow] = useState(false);
+  const [holiday, setHoliday] = useState<string | null>(null);
 
   async function handleSearch() {
     if (!origin.trim()) {
@@ -57,6 +60,7 @@ export default function Home() {
         minTemp,
         wantSun,
         wantDry,
+        wantSnow,
         tripDays,
         maxDistanceKm: maxDistance,
       };
@@ -81,6 +85,8 @@ export default function Home() {
           setOrigin={setOrigin}
           tripDays={tripDays}
           setTripDays={setTripDays}
+          customDays={customDays}
+          setCustomDays={setCustomDays}
           minTemp={minTemp}
           setMinTemp={setMinTemp}
           maxDistance={maxDistance}
@@ -89,6 +95,10 @@ export default function Home() {
           setWantSun={setWantSun}
           wantDry={wantDry}
           setWantDry={setWantDry}
+          wantSnow={wantSnow}
+          setWantSnow={setWantSnow}
+          holiday={holiday}
+          setHoliday={setHoliday}
           loading={loading}
           error={error}
           onSearch={handleSearch}
@@ -102,6 +112,7 @@ export default function Home() {
           minTemp={minTemp}
           wantSun={wantSun}
           wantDry={wantDry}
+          wantSnow={wantSnow}
           maxDistance={maxDistance}
           onBack={() => setView("input")}
         />
@@ -114,8 +125,10 @@ export default function Home() {
 type InputProps = {
   origin: string;
   setOrigin: (v: string) => void;
-  tripDays: 7 | 14;
-  setTripDays: (v: 7 | 14) => void;
+  tripDays: number;
+  setTripDays: (v: number) => void;
+  customDays: boolean;
+  setCustomDays: (v: boolean) => void;
   minTemp: number;
   setMinTemp: (v: number) => void;
   maxDistance: number;
@@ -124,12 +137,37 @@ type InputProps = {
   setWantSun: (v: boolean) => void;
   wantDry: boolean;
   setWantDry: (v: boolean) => void;
+  wantSnow: boolean;
+  setWantSnow: (v: boolean) => void;
+  holiday: string | null;
+  setHoliday: (v: string | null) => void;
   loading: boolean;
   error: string | null;
   onSearch: () => void;
 };
 
+/** Vakantie-presets: zetten temperatuur + weersvoorkeuren in één klik. */
+const HOLIDAYS = [
+  { id: "strand", label: "Strand", icon: "beach_access", minTemp: 24, sun: true, dry: true, snow: false },
+  { id: "surf", label: "Surf", icon: "surfing", minTemp: 18, sun: true, dry: false, snow: false },
+  { id: "ski", label: "Ski", icon: "downhill_skiing", minTemp: -5, sun: true, dry: false, snow: true },
+  { id: "wandelen", label: "Wandelen", icon: "hiking", minTemp: 14, sun: true, dry: true, snow: false },
+  { id: "citytrip", label: "Citytrip", icon: "location_city", minTemp: 16, sun: false, dry: true, snow: false },
+] as const;
+
 function InputScreen(p: InputProps) {
+  const applyHoliday = (h: (typeof HOLIDAYS)[number]) => {
+    if (p.holiday === h.id) {
+      p.setHoliday(null);
+      return;
+    }
+    p.setHoliday(h.id);
+    p.setMinTemp(h.minTemp);
+    p.setWantSun(h.sun);
+    p.setWantDry(h.dry);
+    p.setWantSnow(h.snow);
+  };
+
   return (
     <>
       <main className="flex-grow pt-md pb-40 px-container-margin max-w-2xl w-full mx-auto space-y-md">
@@ -155,24 +193,68 @@ function InputScreen(p: InputProps) {
         {/* Duur + min. temperatuur */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-md">
           <section className="expedition-card stamp-shadow p-md rounded-lg space-y-sm">
-            <h3 className="font-label-lg text-label-lg uppercase tracking-widest text-outline">
-              Duur van de reis
-            </h3>
-            <div className="flex p-xs bg-surface-container-high rounded-sm">
-              {([7, 14] as const).map((d) => (
+            <div className="flex justify-between items-baseline">
+              <h3 className="font-label-lg text-label-lg uppercase tracking-widest text-outline">
+                Duur van de reis
+              </h3>
+              {p.customDays && (
+                <span className="font-headline-sm text-headline-sm text-primary">
+                  {p.tripDays} dagen
+                </span>
+              )}
+            </div>
+            <div className="flex p-xs bg-surface-container-high rounded-sm gap-1">
+              {[
+                {
+                  key: "7",
+                  label: "7d",
+                  active: !p.customDays && p.tripDays === 7,
+                  on: () => {
+                    p.setCustomDays(false);
+                    p.setTripDays(7);
+                  },
+                },
+                {
+                  key: "14",
+                  label: "14d",
+                  active: !p.customDays && p.tripDays === 14,
+                  on: () => {
+                    p.setCustomDays(false);
+                    p.setTripDays(14);
+                  },
+                },
+                {
+                  key: "andere",
+                  label: "Andere",
+                  active: p.customDays,
+                  on: () => {
+                    p.setCustomDays(true);
+                    if (p.tripDays === 7 || p.tripDays === 14) p.setTripDays(10);
+                  },
+                },
+              ].map((b) => (
                 <button
-                  key={d}
-                  onClick={() => p.setTripDays(d)}
+                  key={b.key}
+                  onClick={b.on}
                   className={`flex-1 py-base font-headline-sm text-headline-sm uppercase tracking-tighter transition-all duration-200 rounded-sm ${
-                    p.tripDays === d
+                    b.active
                       ? "bg-primary text-on-primary -rotate-1"
                       : "text-on-surface-variant/60"
                   }`}
                 >
-                  {d} Dagen
+                  {b.label}
                 </button>
               ))}
             </div>
+            {p.customDays && (
+              <input
+                type="range"
+                min={3}
+                max={16}
+                value={p.tripDays}
+                onChange={(e) => p.setTripDays(Number(e.target.value))}
+              />
+            )}
           </section>
 
           <section className="expedition-card stamp-shadow p-md rounded-lg space-y-sm">
@@ -186,13 +268,13 @@ function InputScreen(p: InputProps) {
             </div>
             <input
               type="range"
-              min={5}
+              min={-10}
               max={40}
               value={p.minTemp}
               onChange={(e) => p.setMinTemp(Number(e.target.value))}
             />
             <div className="flex justify-between text-[10px] uppercase font-bold text-outline/40 tracking-widest">
-              <span>Fris</span>
+              <span>Vriezend</span>
               <span>Tropisch</span>
             </div>
           </section>
@@ -211,7 +293,7 @@ function InputScreen(p: InputProps) {
           <input
             type="range"
             min={100}
-            max={1500}
+            max={2500}
             step={50}
             value={p.maxDistance}
             onChange={(e) => p.setMaxDistance(Number(e.target.value))}
@@ -220,6 +302,31 @@ function InputScreen(p: InputProps) {
             <span>Dichtbij</span>
             <span>Expeditie</span>
           </div>
+        </section>
+
+        {/* Soort vakantie */}
+        <section className="expedition-card stamp-shadow p-md rounded-lg space-y-md">
+          <div className="flex items-center gap-2 border-b border-outline-variant pb-sm">
+            <Icon name="luggage" className="text-primary" filled />
+            <h2 className="font-headline-md text-headline-md">
+              Soort vakantie
+            </h2>
+          </div>
+          <div className="flex flex-wrap gap-sm">
+            {HOLIDAYS.map((h) => (
+              <PrefChip
+                key={h.id}
+                label={h.label}
+                icon={h.icon}
+                active={p.holiday === h.id}
+                onClick={() => applyHoliday(h)}
+              />
+            ))}
+          </div>
+          <p className="font-label-sm text-label-sm text-outline">
+            Een keuze zet meteen de ideale temperatuur en weersvoorkeuren — fijn
+            te tunen hieronder.
+          </p>
         </section>
 
         {/* Weersvoorkeuren */}
@@ -235,13 +342,28 @@ function InputScreen(p: InputProps) {
               label="Zonnig"
               icon="sunny"
               active={p.wantSun}
-              onClick={() => p.setWantSun(!p.wantSun)}
+              onClick={() => {
+                p.setWantSun(!p.wantSun);
+                p.setHoliday(null);
+              }}
             />
             <PrefChip
               label="Droog"
               icon="water_drop"
               active={p.wantDry}
-              onClick={() => p.setWantDry(!p.wantDry)}
+              onClick={() => {
+                p.setWantDry(!p.wantDry);
+                p.setHoliday(null);
+              }}
+            />
+            <PrefChip
+              label="Sneeuw"
+              icon="weather_snowy"
+              active={p.wantSnow}
+              onClick={() => {
+                p.setWantSnow(!p.wantSnow);
+                p.setHoliday(null);
+              }}
             />
           </div>
           <p className="font-label-sm text-label-sm text-outline">
@@ -309,6 +431,7 @@ function ResultsScreen({
   minTemp,
   wantSun,
   wantDry,
+  wantSnow,
   maxDistance,
   onBack,
 }: {
@@ -319,6 +442,7 @@ function ResultsScreen({
   minTemp: number;
   wantSun: boolean;
   wantDry: boolean;
+  wantSnow: boolean;
   maxDistance: number;
   onBack: () => void;
 }) {
@@ -369,6 +493,11 @@ function ResultsScreen({
                 <Icon name="water_drop" className="text-[16px]" />
               </span>
             )}
+            {wantSnow && (
+              <span className="flex items-center gap-1">
+                <Icon name="weather_snowy" className="text-[16px]" />
+              </span>
+            )}
           </p>
         </div>
         <button
@@ -403,7 +532,9 @@ function ResultsScreen({
         </div>
       )}
 
-      {showInfo && <ScoreInfo wantSun={wantSun} wantDry={wantDry} />}
+      {showInfo && (
+        <ScoreInfo wantSun={wantSun} wantDry={wantDry} wantSnow={wantSnow} />
+      )}
 
       {top.length === 0 ? (
         <div className="text-center py-lg space-y-2 text-on-surface-variant">
@@ -449,31 +580,24 @@ const fmtDate = (iso: string) =>
     month: "short",
   });
 
-function scoreStyles(score: number) {
+function scoreBadge(score: number) {
+  if (score >= 9)
+    return "bg-secondary-fixed-dim text-on-secondary-container border-secondary"; // heel fel
   if (score >= 8)
-    return {
-      badge:
-        "bg-secondary-container text-on-secondary-container border-secondary",
-      patch:
-        "bg-secondary-container border-secondary text-on-secondary-container",
-    };
-  if (score >= 6)
-    return {
-      badge: "bg-surface-container-highest text-on-surface border-outline",
-      patch: "bg-surface-container-highest border-outline text-tertiary",
-    };
-  return {
-    badge: "bg-surface-variant text-on-surface-variant border-outline",
-    patch: "bg-surface-variant border-outline text-on-surface-variant",
-  };
+    return "bg-secondary-container text-on-secondary-container border-secondary"; // fel
+  if (score >= 7)
+    return "bg-secondary-fixed text-on-secondary-container border-secondary/50"; // zachter
+  return "bg-surface-variant text-on-surface-variant border-outline"; // grijs
 }
 
 function ScoreInfo({
   wantSun,
   wantDry,
+  wantSnow,
 }: {
   wantSun: boolean;
   wantDry: boolean;
+  wantSnow: boolean;
 }) {
   return (
     <div className="border-2 border-dashed border-outline-variant bg-surface-container-highest rounded-lg p-md space-y-sm">
@@ -508,6 +632,15 @@ function ScoreInfo({
             {wantDry ? " (zwaarder, want je koos “droog”)" : ""}.
           </span>
         </li>
+        {wantSnow && (
+          <li className="flex gap-2">
+            <Icon name="weather_snowy" className="text-tertiary text-sm" />
+            <span>
+              <strong>Sneeuw</strong> — sneeuwval en koude met neerslag scoren
+              hoog (zwaarder, want je koos “sneeuw”).
+            </span>
+          </li>
+        )}
       </ul>
     </div>
   );
@@ -525,7 +658,7 @@ function ResultCard({
   onToggle: () => void;
 }) {
   const { city, distanceKm, score, condition } = result;
-  const styles = scoreStyles(score);
+  const badgeCls = scoreBadge(score);
 
   return (
     <article className="bg-surface border border-outline-variant rounded-xl stamp-shadow overflow-hidden">
@@ -600,7 +733,7 @@ function ResultCard({
 
         {/* Score */}
         <div
-          className={`flex-shrink-0 self-stretch w-16 rounded-lg border-2 flex flex-col items-center justify-center ${styles.badge}`}
+          className={`flex-shrink-0 self-stretch w-16 rounded-lg border-2 flex flex-col items-center justify-center ${badgeCls}`}
         >
           <span className="font-headline-md text-headline-md leading-none">
             {score.toFixed(1)}

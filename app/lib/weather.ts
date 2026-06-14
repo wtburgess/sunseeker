@@ -6,6 +6,7 @@ export type Preferences = {
   minTemp: number;
   wantSun: boolean;
   wantDry: boolean;
+  wantSnow: boolean;
   /** Lengte van de reis in dagen (forecast-venster). */
   tripDays: number;
   /** Maximale afstand vanaf het vertrekpunt in km. */
@@ -118,12 +119,24 @@ function scoreDay(day: DailyForecast, prefs: Preferences): number {
   const sunScore = clamp(10 - day.cloud / 10, 0, 10);
   const dryScore = clamp(10 - day.precip * 3 - day.precipProb * 0.04, 0, 10);
 
+  // Sneeuw: echte sneeuwcodes scoren vol; anders telt koude (met neerslag) mee.
+  const isSnow =
+    (day.code >= 71 && day.code <= 77) || (day.code >= 85 && day.code <= 86);
+  const cold = clamp(10 - Math.max(day.tMax, 0) * 1.4, 0, 10);
+  const snowScore = isSnow ? 10 : cold * (day.precip > 0 ? 1 : 0.7);
+
   const wTemp = 1.2;
   const wSun = prefs.wantSun ? 2 : 0.6;
   const wDry = prefs.wantDry ? 1.8 : 0.5;
+  const wSnow = prefs.wantSnow ? 2.2 : 0;
 
-  return (tempScore * wTemp + sunScore * wSun + dryScore * wDry) /
-    (wTemp + wSun + wDry);
+  return (
+    (tempScore * wTemp +
+      sunScore * wSun +
+      dryScore * wDry +
+      snowScore * wSnow) /
+    (wTemp + wSun + wDry + wSnow)
+  );
 }
 
 /** Zoekt het beste aaneengesloten blok dagen binnen het venster. */
