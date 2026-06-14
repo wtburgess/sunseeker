@@ -32,19 +32,20 @@ type DailyForecast = {
   code: number; // WMO
 };
 
-/** Eén dag uit het reisvenster, inclusief per-dag score en stretch-vlag. */
+/** Eén dag uit het reisvenster, inclusief per-dag score en "goed"-vlag. */
 export type DayForecast = DailyForecast & {
   score: number; // 0–10 voor deze dag
-  inStretch: boolean; // onderdeel van de beste aaneengesloten stretch
+  good: boolean; // haalt de "goed"-drempel
 };
 
 export type ScoredCity = {
   city: City;
   distanceKm: number;
-  score: number; // 0–10 (beste aaneengesloten stretch)
-  stretchStart: string; // ISO-datum
-  stretchEnd: string; // ISO-datum
-  stretchDays: number;
+  score: number; // 0–10 (gemiddelde over de hele reis)
+  goodDays: number; // aantal goede dagen in het venster
+  totalDays: number;
+  startDate: string; // ISO-datum eerste dag
+  endDate: string; // ISO-datum laatste dag
   avgTempMax: number;
   avgCloud: number;
   totalPrecip: number;
@@ -125,9 +126,10 @@ function scoreDay(day: DailyForecast, prefs: Preferences): number {
   const cold = clamp(10 - Math.max(day.tMax, 0) * 1.4, 0, 10);
   const snowScore = isSnow ? 10 : cold * (day.precip > 0 ? 1 : 0.7);
 
-  const wTemp = 1.2;
+  // Droog weegt over het algemeen zwaarder dan de exacte temperatuur.
+  const wTemp = 1;
   const wSun = prefs.wantSun ? 2 : 0.6;
-  const wDry = prefs.wantDry ? 1.8 : 0.5;
+  const wDry = prefs.wantDry ? 2.5 : 1.2;
   const wSnow = prefs.wantSnow ? 2.2 : 0;
 
   return (
@@ -139,24 +141,19 @@ function scoreDay(day: DailyForecast, prefs: Preferences): number {
   );
 }
 
-/** Zoekt het beste aaneengesloten blok dagen binnen het venster. */
-function bestStretch(days: DailyForecast[], prefs: Preferences) {
+/** Drempel waarboven een dag als "goed" telt. */
+const GOOD_DAY = 6;
+
+/**
+ * Scoort de hele reis als het gemiddelde van de dagscores. Meer goede dagen
+ * geeft een hogere score, ook als er een slechte dag tussen zit: 3 + regendag
+ * + 3 (gem. 8,0) verslaat 5 op een rij + 2 regendagen (gem. 7,0).
+ */
+function scoreTrip(days: DailyForecast[], prefs: Preferences) {
   const window = days.slice(0, prefs.tripDays);
-  const len = Math.min(prefs.tripDays <= 7 ? 5 : 7, window.length);
-
   const dayScores = window.map((d) => scoreDay(d, prefs));
-
-  let bestStart = 0;
-  let bestAvg = -1;
-  for (let i = 0; i + len <= window.length; i++) {
-    const avg = dayScores.slice(i, i + len).reduce((a, b) => a + b, 0) / len;
-    if (avg > bestAvg) {
-      bestAvg = avg;
-      bestStart = i;
-    }
-  }
-
-  return { window, dayScores, bestStart, len, score: bestAvg };
+  const score = dayScores.reduce((a, b) => a + b, 0) / dayScores.length;
+  return { window, dayScores, score };
 }
 
 function mostCommonCode(days: DailyForecast[]): number {
@@ -298,31 +295,28 @@ export async function planTrip(
   );
 
   const scored: ScoredCity[] = candidates.map(({ city, dist }, i) => {
-    const { window, dayScores, bestStart, len, score } = bestStretch(
-      forecasts[i],
-      prefs,
-    );
-    const stretch = window.slice(bestStart, bestStart + len);
+    const { window, dayScores, score } = scoreTrip(forecasts[i], prefs);
     const avg = (sel: (d: DailyForecast) => number) =>
-      stretch.reduce((a, d) => a + sel(d), 0) / stretch.length;
+      window.reduce((a, d) => a + sel(d), 0) / window.length;
 
     const days: DayForecast[] = window.map((d, idx) => ({
       ...d,
       score: Math.round(clamp(dayScores[idx], 0, 10) * 10) / 10,
-      inStretch: idx >= bestStart && idx < bestStart + len,
+      good: dayScores[idx] >= GOOD_DAY,
     }));
 
     return {
       city,
       distanceKm: dist,
       score: Math.round(clamp(score, 0, 10) * 10) / 10,
-      stretchStart: stretch[0].date,
-      stretchEnd: stretch[stretch.length - 1].date,
-      stretchDays: stretch.length,
+      goodDays: days.filter((d) => d.good).length,
+      totalDays: window.length,
+      startDate: window[0].date,
+      endDate: window[window.length - 1].date,
       avgTempMax: Math.round(avg((d) => d.tMax)),
       avgCloud: Math.round(avg((d) => d.cloud)),
-      totalPrecip: Math.round(stretch.reduce((a, d) => a + d.precip, 0) * 10) / 10,
-      condition: conditionFromCode(mostCommonCode(stretch)),
+      totalPrecip: Math.round(window.reduce((a, d) => a + d.precip, 0) * 10) / 10,
+      condition: conditionFromCode(mostCommonCode(window)),
       days,
     };
   });

@@ -41,7 +41,6 @@ export default function Home() {
   const [wantSun, setWantSun] = useState(true);
   const [wantDry, setWantDry] = useState(true);
   const [wantSnow, setWantSnow] = useState(false);
-  const [holiday, setHoliday] = useState<string | null>(null);
 
   async function handleSearch() {
     if (!origin.trim()) {
@@ -97,8 +96,6 @@ export default function Home() {
           setWantDry={setWantDry}
           wantSnow={wantSnow}
           setWantSnow={setWantSnow}
-          holiday={holiday}
-          setHoliday={setHoliday}
           loading={loading}
           error={error}
           onSearch={handleSearch}
@@ -139,35 +136,12 @@ type InputProps = {
   setWantDry: (v: boolean) => void;
   wantSnow: boolean;
   setWantSnow: (v: boolean) => void;
-  holiday: string | null;
-  setHoliday: (v: string | null) => void;
   loading: boolean;
   error: string | null;
   onSearch: () => void;
 };
 
-/** Vakantie-presets: zetten temperatuur + weersvoorkeuren in één klik. */
-const HOLIDAYS = [
-  { id: "strand", label: "Strand", icon: "beach_access", minTemp: 24, sun: true, dry: true, snow: false },
-  { id: "surf", label: "Surf", icon: "surfing", minTemp: 18, sun: true, dry: false, snow: false },
-  { id: "ski", label: "Ski", icon: "downhill_skiing", minTemp: -5, sun: true, dry: false, snow: true },
-  { id: "wandelen", label: "Wandelen", icon: "hiking", minTemp: 14, sun: true, dry: true, snow: false },
-  { id: "citytrip", label: "Citytrip", icon: "location_city", minTemp: 16, sun: false, dry: true, snow: false },
-] as const;
-
 function InputScreen(p: InputProps) {
-  const applyHoliday = (h: (typeof HOLIDAYS)[number]) => {
-    if (p.holiday === h.id) {
-      p.setHoliday(null);
-      return;
-    }
-    p.setHoliday(h.id);
-    p.setMinTemp(h.minTemp);
-    p.setWantSun(h.sun);
-    p.setWantDry(h.dry);
-    p.setWantSnow(h.snow);
-  };
-
   return (
     <>
       <main className="flex-grow pt-md pb-40 px-4 md:px-container-margin max-w-2xl w-full mx-auto space-y-md">
@@ -304,31 +278,6 @@ function InputScreen(p: InputProps) {
           </div>
         </section>
 
-        {/* Soort vakantie */}
-        <section className="expedition-card stamp-shadow p-md rounded-lg space-y-md">
-          <div className="flex items-center gap-2 border-b border-outline-variant pb-sm">
-            <Icon name="luggage" className="text-primary" filled />
-            <h2 className="font-headline-md text-headline-md">
-              Soort vakantie
-            </h2>
-          </div>
-          <div className="flex flex-wrap gap-sm">
-            {HOLIDAYS.map((h) => (
-              <PrefChip
-                key={h.id}
-                label={h.label}
-                icon={h.icon}
-                active={p.holiday === h.id}
-                onClick={() => applyHoliday(h)}
-              />
-            ))}
-          </div>
-          <p className="font-label-sm text-label-sm text-outline">
-            Een keuze zet meteen de ideale temperatuur en weersvoorkeuren — fijn
-            te tunen hieronder.
-          </p>
-        </section>
-
         {/* Weersvoorkeuren */}
         <section className="expedition-card stamp-shadow p-md rounded-lg space-y-md">
           <div className="flex items-center gap-2 border-b border-outline-variant pb-sm">
@@ -342,28 +291,19 @@ function InputScreen(p: InputProps) {
               label="Zonnig"
               icon="sunny"
               active={p.wantSun}
-              onClick={() => {
-                p.setWantSun(!p.wantSun);
-                p.setHoliday(null);
-              }}
+              onClick={() => p.setWantSun(!p.wantSun)}
             />
             <PrefChip
               label="Droog"
               icon="water_drop"
               active={p.wantDry}
-              onClick={() => {
-                p.setWantDry(!p.wantDry);
-                p.setHoliday(null);
-              }}
+              onClick={() => p.setWantDry(!p.wantDry)}
             />
             <PrefChip
               label="Sneeuw"
               icon="weather_snowy"
               active={p.wantSnow}
-              onClick={() => {
-                p.setWantSnow(!p.wantSnow);
-                p.setHoliday(null);
-              }}
+              onClick={() => p.setWantSnow(!p.wantSnow)}
             />
           </div>
           <p className="font-label-sm text-label-sm text-outline">
@@ -605,17 +545,23 @@ function ScoreInfo({
         <Icon name="calculate" /> Hoe de score werkt
       </h4>
       <p className="font-body-md text-sm text-on-surface-variant">
-        Elke dag krijgt een cijfer van 0 tot 10 op basis van drie factoren. De
-        eindscore is het gemiddelde van je{" "}
-        <strong>beste aaneengesloten dagen</strong> binnen het reisvenster — één
-        natte dag verpest het dus niet.
+        Elke dag krijgt een cijfer van 0 tot 10. De eindscore is het{" "}
+        <strong>gemiddelde over alle dagen</strong> van je reis — hoe meer goede
+        dagen, hoe hoger (ook met een regendag ertussen).
       </p>
       <ul className="space-y-2 font-body-md text-sm">
         <li className="flex gap-2">
+          <Icon name="water_drop" className="text-tertiary text-sm" />
+          <span>
+            <strong>Droog</strong> — neerslag en regenkans drukken de score.
+            Weegt het zwaarst{wantDry ? " (en extra, want je koos “droog”)" : ""}.
+          </span>
+        </li>
+        <li className="flex gap-2">
           <Icon name="thermostat" className="text-primary text-sm" />
           <span>
-            <strong>Temperatuur</strong> — warm genoeg t.o.v. jouw minimum telt
-            vol mee; kouder zakt snel.
+            <strong>Temperatuur</strong> — warm genoeg t.o.v. jouw minimum;
+            weegt minder zwaar dan droogte.
           </span>
         </li>
         <li className="flex gap-2">
@@ -623,13 +569,6 @@ function ScoreInfo({
           <span>
             <strong>Zon</strong> — minder bewolking = hoger
             {wantSun ? " (zwaarder, want je koos “zonnig”)" : ""}.
-          </span>
-        </li>
-        <li className="flex gap-2">
-          <Icon name="water_drop" className="text-tertiary text-sm" />
-          <span>
-            <strong>Droog</strong> — neerslag en regenkans drukken de score
-            {wantDry ? " (zwaarder, want je koos “droog”)" : ""}.
           </span>
         </li>
         {wantSnow && (
@@ -705,9 +644,9 @@ function ResultCard({
           </div>
 
           <p className="mt-1 font-label-sm text-label-sm text-on-surface-variant flex items-center gap-1">
-            <Icon name="wb_sunny" className="text-sm" filled />
-            Beste {result.stretchDays} dagen: {fmtDate(result.stretchStart)} –{" "}
-            {fmtDate(result.stretchEnd)}
+            <Icon name="event_available" className="text-sm" filled />
+            {result.goodDays}/{result.totalDays} goede dagen ·{" "}
+            {fmtDate(result.startDate)} – {fmtDate(result.endDate)}
           </p>
 
           <div className="mt-base flex items-center justify-between border-t border-outline-variant pt-base font-label-sm text-label-sm text-on-surface-variant">
@@ -766,7 +705,7 @@ function DayRow({ day }: { day: DayForecast }) {
   return (
     <div
       className={`flex items-center gap-2 py-sm border-l-4 pl-2 ${
-        day.inStretch
+        day.good
           ? "border-secondary bg-secondary-container/15"
           : "border-transparent opacity-70"
       }`}

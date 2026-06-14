@@ -3,7 +3,14 @@
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useEffect, useState } from "react";
-import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
+import {
+  MapContainer,
+  Marker,
+  Popup,
+  TileLayer,
+  useMap,
+  useMapEvents,
+} from "react-leaflet";
 import { Icon } from "./Icon";
 import { conditionFromCode, type ScoredCity } from "../lib/weather";
 
@@ -11,6 +18,9 @@ type Props = {
   results: ScoredCity[];
   origin: { lat: number; lon: number; label: string };
 };
+
+/** Vanaf dit zoomniveau worden ook de grijze markers volledig getoond. */
+const ZOOM_FULL = 6;
 
 /** Kleur (hex) van de score-badge — spiegelt de lijstweergave. */
 function scoreHex(score: number) {
@@ -20,7 +30,8 @@ function scoreHex(score: number) {
   return { bg: "#e0d9cc", fg: "#56423d", bd: "#8a726b" }; // grijs
 }
 
-function badgeIcon(score: number, iconName: string) {
+/** Volledige badge: score + weericoon, gestapeld. */
+function badgeIconFull(score: number, iconName: string) {
   const { bg, fg, bd } = scoreHex(score);
   return L.divIcon({
     className: "",
@@ -33,6 +44,21 @@ function badgeIcon(score: number, iconName: string) {
       font-variation-settings:'FILL' 1;line-height:1">${iconName}</span></div>`,
     iconSize: [40, 42],
     iconAnchor: [20, 21],
+  });
+}
+
+/** Minimalistische badge: enkel de score in een klein bolletje. */
+function badgeIconMini(score: number) {
+  const { bg, fg, bd } = scoreHex(score);
+  return L.divIcon({
+    className: "",
+    html: `<div style="width:24px;height:24px;border-radius:50%;display:flex;
+      align-items:center;justify-content:center;background:${bg};color:${fg};
+      border:1px solid ${bd};box-shadow:0 1px 2px rgba(0,0,0,.25);
+      font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:11px;
+      line-height:1">${score.toFixed(1)}</div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
   });
 }
 
@@ -58,6 +84,16 @@ function FitBounds({ points }: { points: [number, number][] }) {
   return null;
 }
 
+/** Houdt het huidige zoomniveau bij in state. */
+function ZoomWatcher({ setZoom }: { setZoom: (z: number) => void }) {
+  const map = useMapEvents({ zoomend: () => setZoom(map.getZoom()) });
+  useEffect(() => {
+    setZoom(map.getZoom());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return null;
+}
+
 const fmtDay = (iso: string) =>
   new Date(iso).toLocaleDateString("nl-BE", {
     weekday: "long",
@@ -67,8 +103,9 @@ const fmtDay = (iso: string) =>
 
 export default function ResultsMap({ results, origin }: Props) {
   const dayCount = results[0]?.days.length ?? 0;
-  // -1 = totaal (beste stretch), anders een specifieke dag-index.
+  // -1 = gemiddeld over de hele reis, anders een specifieke dag-index.
   const [dayIdx, setDayIdx] = useState(-1);
+  const [zoom, setZoom] = useState(5);
 
   const points: [number, number][] = [
     [origin.lat, origin.lon],
@@ -77,7 +114,7 @@ export default function ResultsMap({ results, origin }: Props) {
 
   const dayLabel =
     dayIdx === -1
-      ? "Totaal · beste stretch"
+      ? "Gemiddeld · hele reis"
       : fmtDay(results[0].days[dayIdx].date);
 
   return (
@@ -101,7 +138,7 @@ export default function ResultsMap({ results, origin }: Props) {
           onChange={(e) => setDayIdx(Number(e.target.value))}
         />
         <div className="flex justify-between text-[10px] uppercase font-bold text-outline/40 tracking-widest">
-          <span>Totaal</span>
+          <span>Gem.</span>
           <span>Dag {dayCount}</span>
         </div>
       </div>
@@ -120,6 +157,7 @@ export default function ResultsMap({ results, origin }: Props) {
             subdomains="abcd"
           />
           <FitBounds points={points} />
+          <ZoomWatcher setZoom={setZoom} />
 
           <Marker position={[origin.lat, origin.lon]} icon={originIcon}>
             <Popup>
@@ -134,11 +172,14 @@ export default function ResultsMap({ results, origin }: Props) {
             const score = day ? day.score : r.score;
             const cond = day ? conditionFromCode(day.code) : r.condition;
             const temp = day ? Math.round(day.tMax) : r.avgTempMax;
+            // Grijze (lage) markers blijven klein tot je inzoomt; goede altijd groot.
+            const full = zoom >= ZOOM_FULL || score >= 7;
             return (
               <Marker
                 key={r.city.id}
                 position={[r.city.lat, r.city.lon]}
-                icon={badgeIcon(score, cond.icon)}
+                icon={full ? badgeIconFull(score, cond.icon) : badgeIconMini(score)}
+                zIndexOffset={Math.round(score * 100)}
               >
                 <Popup>
                   <strong style={{ textTransform: "uppercase" }}>
