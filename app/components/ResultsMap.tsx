@@ -19,7 +19,7 @@ type Props = {
   origin: { lat: number; lon: number; label: string };
 };
 
-/** Vanaf dit zoomniveau worden ook de grijze markers volledig getoond. */
+/** Vanaf dit zoomniveau tonen markers ook het weericoon (anders enkel het cijfer). */
 const ZOOM_FULL = 6;
 
 /** Kleur (hex) van de score-badge — spiegelt de lijstweergave. */
@@ -30,20 +30,20 @@ function scoreHex(score: number) {
   return { bg: "#e0d9cc", fg: "#56423d", bd: "#8a726b" }; // grijs
 }
 
-/** Volledige badge: score + weericoon, gestapeld. */
+/** Volledige badge: score + weericoon, gestapeld in een rond bolletje. */
 function badgeIconFull(score: number, iconName: string) {
   const { bg, fg, bd } = scoreHex(score);
   return L.divIcon({
     className: "",
-    html: `<div style="width:40px;height:42px;display:flex;flex-direction:column;
-      align-items:center;justify-content:center;gap:1px;border-radius:11px;background:${bg};
+    html: `<div style="width:44px;height:44px;border-radius:50%;display:flex;
+      flex-direction:column;align-items:center;justify-content:center;gap:1px;background:${bg};
       color:${fg};border:2px solid ${bd};box-shadow:0 1px 4px rgba(0,0,0,.35);
-      font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:15px;line-height:1">
+      font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:14px;line-height:1">
       <span>${score.toFixed(1)}</span>
-      <span style="font-family:'Material Symbols Outlined';font-size:15px;
+      <span style="font-family:'Material Symbols Outlined';font-size:14px;
       font-variation-settings:'FILL' 1;line-height:1">${iconName}</span></div>`,
-    iconSize: [40, 42],
-    iconAnchor: [20, 21],
+    iconSize: [44, 44],
+    iconAnchor: [22, 22],
   });
 }
 
@@ -172,8 +172,8 @@ export default function ResultsMap({ results, origin }: Props) {
             const score = day ? day.score : r.score;
             const cond = day ? conditionFromCode(day.code) : r.condition;
             const temp = day ? Math.round(day.tMax) : r.avgTempMax;
-            // Grijze (lage) markers blijven klein tot je inzoomt; goede altijd groot.
-            const full = zoom >= ZOOM_FULL || score >= 7;
+            // Uitgezoomd: enkel cijfer + kleur. Ingezoomd: weericoon erbij.
+            const full = zoom >= ZOOM_FULL;
             return (
               <Marker
                 key={r.city.id}
