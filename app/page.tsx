@@ -144,7 +144,7 @@ type InputProps = {
 function InputScreen(p: InputProps) {
   return (
     <>
-      <main className="flex-grow pt-md pb-40 px-4 md:px-container-margin max-w-2xl w-full mx-auto space-y-md">
+      <main className="flex-grow pt-md pb-40 px-4 md:px-container-margin max-w-2xl w-full mx-auto space-y-md animate-fade-in">
         {/* Vertrekpunt */}
         <section className="space-y-sm">
           <h2 className="font-headline-md text-headline-md text-on-surface-variant flex items-center gap-2">
@@ -327,7 +327,10 @@ function InputScreen(p: InputProps) {
             className="w-full bg-primary text-on-primary py-md rounded-xl font-headline-md text-headline-md uppercase tracking-widest flex items-center justify-center gap-3 shadow-xl active:scale-[0.98] transition-transform disabled:opacity-60"
             style={{ clipPath: "polygon(0% 5%, 100% 0%, 98% 95%, 2% 100%)" }}
           >
-            <Icon name={p.loading ? "hourglass_top" : "filter_drama"} />
+            <Icon
+              name={p.loading ? "progress_activity" : "filter_drama"}
+              className={p.loading ? "animate-spin" : ""}
+            />
             {p.loading ? "Weer zoeken…" : "Toon goed weer"}
           </button>
         </div>
@@ -392,7 +395,7 @@ function ResultsScreen({
   const [resultView, setResultView] = useState<"list" | "map">("list");
 
   return (
-    <main className="flex-grow pt-md pb-24 px-4 md:px-container-margin max-w-2xl w-full mx-auto space-y-md">
+    <main className="flex-grow pt-md pb-24 px-4 md:px-container-margin max-w-2xl w-full mx-auto space-y-md animate-fade-in">
       <div className="flex justify-between items-end border-b-2 border-primary-container/20 pb-base">
         <div>
           <h2 className="font-headline-md text-headline-md uppercase tracking-tight flex items-center gap-1">
@@ -540,7 +543,7 @@ function ScoreInfo({
   wantSnow: boolean;
 }) {
   return (
-    <div className="border-2 border-dashed border-outline-variant bg-surface-container-highest rounded-lg p-md space-y-sm">
+    <div className="border-2 border-dashed border-outline-variant bg-surface-container-highest rounded-lg p-md space-y-sm animate-fade-in">
       <h4 className="font-headline-sm text-headline-sm uppercase text-primary flex items-center gap-2">
         <Icon name="calculate" /> Hoe de score werkt
       </h4>
@@ -600,7 +603,10 @@ function ResultCard({
   const badgeCls = scoreBadge(score);
 
   return (
-    <article className="bg-surface border border-outline-variant rounded-xl stamp-shadow overflow-hidden">
+    <article
+      className="bg-surface border border-outline-variant rounded-xl stamp-shadow overflow-hidden animate-stamp-in transition-transform duration-200 md:hover:-translate-y-0.5"
+      style={{ animationDelay: `${Math.min(rank - 1, 12) * 40}ms` }}
+    >
       <button
         onClick={onToggle}
         aria-expanded={expanded}
@@ -690,7 +696,7 @@ function ResultCard({
 
 function DayDetail({ days }: { days: DayForecast[] }) {
   return (
-    <div className="border-t-2 border-dashed border-outline-variant bg-surface-container-low px-3 md:px-md py-base">
+    <div className="border-t-2 border-dashed border-outline-variant bg-surface-container-low px-3 md:px-md py-base animate-fade-in">
       <div className="flex flex-col">
         {days.map((day) => (
           <DayRow key={day.date} day={day} />
