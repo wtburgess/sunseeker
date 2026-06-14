@@ -442,9 +442,9 @@ function ResultsScreen({
         </div>
         <button
           onClick={onBack}
-          className="flex items-center gap-1 font-label-sm text-label-sm uppercase text-primary font-bold active-press flex-shrink-0"
+          className="flex items-center gap-1 px-sm py-base rounded-full border-2 border-primary text-primary font-label-lg text-label-lg uppercase font-bold active-press flex-shrink-0 hover:bg-primary hover:text-on-primary transition-colors"
         >
-          <Icon name="tune" /> Wijzig
+          <Icon name="tune" className="text-[20px]" /> Wijzig
         </button>
       </div>
 
