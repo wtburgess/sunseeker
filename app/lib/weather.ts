@@ -4,6 +4,8 @@ import { distanceKm, type LatLon } from "./geo";
 export type Preferences = {
   /** Minimale gewenste dagtemperatuur in °C. */
   minTemp: number;
+  /** Maximale gewenste dagtemperatuur in °C. */
+  maxTemp: number;
   wantSun: boolean;
   wantDry: boolean;
   wantSnow: boolean;
@@ -111,11 +113,16 @@ async function fetchForecasts(
 /* ── Scoring ───────────────────────────────────────────────────────────── */
 /** Match-score (0–10) voor één dag. */
 function scoreDay(day: DailyForecast, prefs: Preferences): number {
-  const diff = day.tMax - prefs.minTemp;
-  const tempScore =
-    diff >= 0
-      ? clamp(10 - Math.min(diff, 15) * 0.2, 6, 10)
-      : clamp(10 + diff * 1.1, 0, 10);
+  // Temperatuur binnen de gewenste band [minTemp, maxTemp] scoort vol; te koud
+  // of te warm wordt evenredig met de afstand tot de band afgestraft.
+  let tempScore: number;
+  if (day.tMax < prefs.minTemp) {
+    tempScore = clamp(10 - (prefs.minTemp - day.tMax) * 1.1, 0, 10); // te koud
+  } else if (day.tMax > prefs.maxTemp) {
+    tempScore = clamp(10 - (day.tMax - prefs.maxTemp) * 1.1, 0, 10); // te warm
+  } else {
+    tempScore = 10; // binnen de gewenste band
+  }
 
   const sunScore = clamp(10 - day.cloud / 10, 0, 10);
   const dryScore = clamp(10 - day.precip * 3 - day.precipProb * 0.04, 0, 10);
@@ -126,8 +133,9 @@ function scoreDay(day: DailyForecast, prefs: Preferences): number {
   const cold = clamp(10 - Math.max(day.tMax, 0) * 1.4, 0, 10);
   const snowScore = isSnow ? 10 : cold * (day.precip > 0 ? 1 : 0.7);
 
-  // Droog weegt over het algemeen zwaarder dan de exacte temperatuur.
-  const wTemp = 1;
+  // Temperatuur (binnen je min–max band) weegt stevig mee; droog blijft het
+  // zwaarst. Buiten de band zakt de dagscore daardoor duidelijk.
+  const wTemp = 2;
   const wSun = prefs.wantSun ? 2 : 0.6;
   const wDry = prefs.wantDry ? 2.5 : 1.2;
   const wSnow = prefs.wantSnow ? 2.2 : 0;

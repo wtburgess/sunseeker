@@ -37,6 +37,7 @@ export default function Home() {
   const [tripDays, setTripDays] = useState<number>(7);
   const [customDays, setCustomDays] = useState(false);
   const [minTemp, setMinTemp] = useState(22);
+  const [maxTemp, setMaxTemp] = useState(40);
   const [maxDistance, setMaxDistance] = useState(1000);
   const [wantSun, setWantSun] = useState(true);
   const [wantDry, setWantDry] = useState(true);
@@ -57,6 +58,7 @@ export default function Home() {
       }
       const prefs: Preferences = {
         minTemp,
+        maxTemp,
         wantSun,
         wantDry,
         wantSnow,
@@ -88,6 +90,8 @@ export default function Home() {
           setCustomDays={setCustomDays}
           minTemp={minTemp}
           setMinTemp={setMinTemp}
+          maxTemp={maxTemp}
+          setMaxTemp={setMaxTemp}
           maxDistance={maxDistance}
           setMaxDistance={setMaxDistance}
           wantSun={wantSun}
@@ -107,6 +111,7 @@ export default function Home() {
           originCoords={originCoords}
           tripDays={tripDays}
           minTemp={minTemp}
+          maxTemp={maxTemp}
           wantSun={wantSun}
           wantDry={wantDry}
           wantSnow={wantSnow}
@@ -128,6 +133,8 @@ type InputProps = {
   setCustomDays: (v: boolean) => void;
   minTemp: number;
   setMinTemp: (v: number) => void;
+  maxTemp: number;
+  setMaxTemp: (v: number) => void;
   maxDistance: number;
   setMaxDistance: (v: number) => void;
   wantSun: boolean;
@@ -234,18 +241,19 @@ function InputScreen(p: InputProps) {
           <section className="expedition-card stamp-shadow p-md rounded-lg space-y-sm">
             <div className="flex justify-between items-baseline">
               <h3 className="font-label-lg text-label-lg uppercase tracking-widest text-outline">
-                Min. temperatuur
+                Temperatuur
               </h3>
               <span className="font-headline-sm text-headline-sm text-primary">
-                {p.minTemp}°C
+                {p.minTemp}° – {p.maxTemp >= 40 ? "40°+" : `${p.maxTemp}°`}
               </span>
             </div>
-            <input
-              type="range"
+            <TempRange
               min={-10}
               max={40}
-              value={p.minTemp}
-              onChange={(e) => p.setMinTemp(Number(e.target.value))}
+              minValue={p.minTemp}
+              maxValue={p.maxTemp}
+              onMinChange={p.setMinTemp}
+              onMaxChange={p.setMaxTemp}
             />
             <div className="flex justify-between text-[10px] uppercase font-bold text-outline/40 tracking-widest">
               <span>Vriezend</span>
@@ -365,6 +373,59 @@ function PrefChip({
   );
 }
 
+/* Dubbele slider met een min- en max-bolletje (min links, max rechts). */
+function TempRange({
+  min,
+  max,
+  minValue,
+  maxValue,
+  onMinChange,
+  onMaxChange,
+}: {
+  min: number;
+  max: number;
+  minValue: number;
+  maxValue: number;
+  onMinChange: (v: number) => void;
+  onMaxChange: (v: number) => void;
+}) {
+  const GAP = 1; // minimale afstand tussen min en max in °C
+  const pct = (v: number) => ((v - min) / (max - min)) * 100;
+
+  return (
+    <div className="dual-range">
+      {/* Passieve achtergrondbalk + actieve band tussen de twee bolletjes */}
+      <div className="dual-range__track" />
+      <div
+        className="dual-range__fill"
+        style={{ left: `${pct(minValue)}%`, right: `${100 - pct(maxValue)}%` }}
+      />
+      {/* Min-bolletje (links) */}
+      <input
+        type="range"
+        min={min}
+        max={max}
+        value={minValue}
+        aria-label="Minimumtemperatuur"
+        onChange={(e) =>
+          onMinChange(Math.min(Number(e.target.value), maxValue - GAP))
+        }
+      />
+      {/* Max-bolletje (rechts, schuift naar links) */}
+      <input
+        type="range"
+        min={min}
+        max={max}
+        value={maxValue}
+        aria-label="Maximumtemperatuur"
+        onChange={(e) =>
+          onMaxChange(Math.max(Number(e.target.value), minValue + GAP))
+        }
+      />
+    </div>
+  );
+}
+
 /* ── Resultatenscherm ──────────────────────────────────────────────────── */
 function ResultsScreen({
   results,
@@ -372,6 +433,7 @@ function ResultsScreen({
   originCoords,
   tripDays,
   minTemp,
+  maxTemp,
   wantSun,
   wantDry,
   wantSnow,
@@ -383,6 +445,7 @@ function ResultsScreen({
   originCoords: OriginCoords | null;
   tripDays: number;
   minTemp: number;
+  maxTemp: number;
   wantSun: boolean;
   wantDry: boolean;
   wantSnow: boolean;
@@ -424,7 +487,8 @@ function ResultsScreen({
             </span>
             <span className="opacity-40">|</span>
             <span className="flex items-center gap-1">
-              <Icon name="thermostat" className="text-[16px]" /> {minTemp}°C
+              <Icon name="thermostat" className="text-[16px]" /> {minTemp}°–
+              {maxTemp >= 40 ? "40°+" : `${maxTemp}°`}
             </span>
             {wantSun && (
               <span className="flex items-center gap-1">
@@ -563,8 +627,8 @@ function ScoreInfo({
         <li className="flex gap-2">
           <Icon name="thermostat" className="text-primary text-sm" />
           <span>
-            <strong>Temperatuur</strong> — warm genoeg t.o.v. jouw minimum;
-            weegt minder zwaar dan droogte.
+            <strong>Temperatuur</strong> — binnen jouw min–max band; te koud of
+            te warm drukt de score. Weegt mee, maar net iets minder dan droogte.
           </span>
         </li>
         <li className="flex gap-2">
