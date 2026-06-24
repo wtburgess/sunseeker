@@ -6,7 +6,7 @@ import { Icon } from "./components/Icon";
 import { TopAppBar } from "./components/TopAppBar";
 import { geocode } from "./lib/geo";
 import {
-  conditionFromCode,
+  conditionFromDay,
   planTrip,
   type DayForecast,
   type Preferences,
@@ -726,7 +726,8 @@ function ResultCard({
           <div className="mt-base flex items-center justify-between border-t border-outline-variant pt-base font-label-sm text-label-sm text-on-surface-variant">
             <div className="flex items-center gap-3">
               <span className="flex items-center gap-1">
-                <Icon name="cloud" className="text-sm" /> {result.avgCloud}%
+                <Icon name="sunny" className="text-sm" filled />{" "}
+                {result.avgSunHours} u zon
               </span>
               <span className="flex items-center gap-1">
                 <Icon name="rainy" className="text-sm" /> {result.totalPrecip} mm
@@ -777,7 +778,7 @@ function DayDetail({ days }: { days: DayForecast[] }) {
 }
 
 function DayRow({ day }: { day: DayForecast }) {
-  const cond = conditionFromCode(day.code);
+  const cond = conditionFromDay(day);
   return (
     <div
       className={`flex items-center gap-2 py-sm border-l-4 pl-2 ${
@@ -804,8 +805,8 @@ function DayRow({ day }: { day: DayForecast }) {
       </span>
       <div className="flex-grow flex items-center gap-2 text-xs text-on-surface-variant min-w-0">
         <span className="flex items-center gap-0.5">
-          <Icon name="cloud" className="text-sm" />
-          {Math.round(day.cloud)}%
+          <Icon name="sunny" className="text-sm" filled />
+          {day.sunHours.toFixed(1)}u
         </span>
         <span className="flex items-center gap-0.5">
           <Icon name="rainy" className="text-sm" />

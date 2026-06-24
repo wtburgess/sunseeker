@@ -12,7 +12,7 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import { Icon } from "./Icon";
-import { conditionFromCode, type ScoredCity } from "../lib/weather";
+import { conditionFromDay, type ScoredCity } from "../lib/weather";
 
 type Props = {
   results: ScoredCity[];
@@ -170,7 +170,7 @@ export default function ResultsMap({ results, origin }: Props) {
           {results.map((r) => {
             const day = dayIdx === -1 ? null : r.days[dayIdx];
             const score = day ? day.score : r.score;
-            const cond = day ? conditionFromCode(day.code) : r.condition;
+            const cond = day ? conditionFromDay(day) : r.condition;
             const temp = day ? Math.round(day.tMax) : r.avgTempMax;
             // Uitgezoomd: enkel cijfer + kleur. Ingezoomd: weericoon erbij.
             const full = zoom >= ZOOM_FULL;

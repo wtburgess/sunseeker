@@ -30,7 +30,9 @@ type DailyForecast = {
   tMax: number;
   precip: number; // mm
   precipProb: number; // %
-  cloud: number; // %
+  cloud: number; // % (24-uurs gemiddelde — incl. nacht, niet getoond)
+  sunHours: number; // werkelijke zonuren overdag
+  sunFraction: number; // aandeel zon t.o.v. daglengte (0–1)
   code: number; // WMO
 };
 
@@ -49,7 +51,7 @@ export type ScoredCity = {
   startDate: string; // ISO-datum eerste dag
   endDate: string; // ISO-datum laatste dag
   avgTempMax: number;
-  avgCloud: number;
+  avgSunHours: number; // gemiddeld aantal zonuren per dag
   totalPrecip: number;
   condition: WeatherCondition;
   days: DayForecast[]; // volledige reisvenster (voor het dag-detail)
@@ -65,7 +67,7 @@ const clamp = (v: number, min: number, max: number) =>
 
 /* ── Forecast ophalen (gebatcht + gechunkt) ────────────────────────────── */
 const DAILY_VARS =
-  "temperature_2m_max,precipitation_sum,precipitation_probability_max,cloud_cover_mean,weather_code";
+  "temperature_2m_max,precipitation_sum,precipitation_probability_max,cloud_cover_mean,sunshine_duration,daylight_duration,weather_code";
 
 async function fetchForecastChunk(
   points: LatLon[],
@@ -85,14 +87,20 @@ async function fetchForecastChunk(
 
   return list.map((entry) => {
     const d = entry.daily;
-    return d.time.map((date: string, i: number): DailyForecast => ({
-      date,
-      tMax: d.temperature_2m_max[i],
-      precip: d.precipitation_sum[i] ?? 0,
-      precipProb: d.precipitation_probability_max[i] ?? 0,
-      cloud: d.cloud_cover_mean[i] ?? 0,
-      code: d.weather_code[i] ?? 0,
-    }));
+    return d.time.map((date: string, i: number): DailyForecast => {
+      const sunSec = d.sunshine_duration[i] ?? 0;
+      const dayLightSec = d.daylight_duration[i] ?? 0;
+      return {
+        date,
+        tMax: d.temperature_2m_max[i],
+        precip: d.precipitation_sum[i] ?? 0,
+        precipProb: d.precipitation_probability_max[i] ?? 0,
+        cloud: d.cloud_cover_mean[i] ?? 0,
+        sunHours: sunSec / 3600,
+        sunFraction: dayLightSec > 0 ? clamp(sunSec / dayLightSec, 0, 1) : 0,
+        code: d.weather_code[i] ?? 0,
+      };
+    });
   });
 }
 
@@ -124,7 +132,9 @@ function scoreDay(day: DailyForecast, prefs: Preferences): number {
     tempScore = 10; // binnen de gewenste band
   }
 
-  const sunScore = clamp(10 - day.cloud / 10, 0, 10);
+  // Zon op basis van werkelijke zonuren overdag (aandeel van de daglengte),
+  // niet het 24-uurs bewolkingsgemiddelde dat ook de nacht meetelt.
+  const sunScore = clamp(day.sunFraction * 10, 0, 10);
   const dryScore = clamp(10 - day.precip * 3 - day.precipProb * 0.04, 0, 10);
 
   // Sneeuw: echte sneeuwcodes scoren vol; anders telt koude (met neerslag) mee.
@@ -164,15 +174,20 @@ function scoreTrip(days: DailyForecast[], prefs: Preferences) {
   return { window, dayScores, score };
 }
 
-function mostCommonCode(days: DailyForecast[]): number {
-  const counts = new Map<number, number>();
-  for (const d of days) counts.set(d.code, (counts.get(d.code) ?? 0) + 1);
-  let best = days[0].code;
+function mostCommonCondition(days: DailyForecast[]): WeatherCondition {
+  const counts = new Map<string, { cond: WeatherCondition; n: number }>();
+  for (const d of days) {
+    const cond = conditionFromDay(d);
+    const entry = counts.get(cond.label);
+    if (entry) entry.n += 1;
+    else counts.set(cond.label, { cond, n: 1 });
+  }
+  let best = conditionFromDay(days[0]);
   let max = 0;
-  for (const [code, n] of counts) {
+  for (const { cond, n } of counts.values()) {
     if (n > max) {
       max = n;
-      best = code;
+      best = cond;
     }
   }
   return best;
@@ -278,6 +293,23 @@ export function conditionFromCode(code: number): WeatherCondition {
   };
 }
 
+/**
+ * Conditie (label + icoon) voor één dag op basis van de werkelijke zonuren.
+ * Neerslag, mist, sneeuw en onweer (WMO-code ≥ 45) blijven leidend; voor droge
+ * dagen kiezen we zon/half/bewolkt op het zon-aandeel i.p.v. de onbetrouwbare
+ * dagelijkse WMO-code (die een zonnige dag soms toch "bewolkt" noemt).
+ */
+export function conditionFromDay(day: {
+  code: number;
+  sunFraction: number;
+}): WeatherCondition {
+  if (day.code >= 45) return conditionFromCode(day.code);
+  if (day.sunFraction >= 0.85) return conditionFromCode(0); // Onbewolkt
+  if (day.sunFraction >= 0.6) return conditionFromCode(1); // Overwegend zonnig
+  if (day.sunFraction >= 0.35) return conditionFromCode(2); // Half bewolkt
+  return conditionFromCode(3); // Bewolkt
+}
+
 /* ── Orkestratie ───────────────────────────────────────────────────────── */
 /**
  * Plant een reis: filtert steden op afstand, haalt de forecast op,
@@ -322,9 +354,9 @@ export async function planTrip(
       startDate: window[0].date,
       endDate: window[window.length - 1].date,
       avgTempMax: Math.round(avg((d) => d.tMax)),
-      avgCloud: Math.round(avg((d) => d.cloud)),
+      avgSunHours: Math.round(avg((d) => d.sunHours)),
       totalPrecip: Math.round(window.reduce((a, d) => a + d.precip, 0) * 10) / 10,
-      condition: conditionFromCode(mostCommonCode(window)),
+      condition: mostCommonCondition(window),
       days,
     };
   });
