@@ -57,6 +57,18 @@ export type ScoredCity = {
   days: DayForecast[]; // volledige reisvenster (voor het dag-detail)
 };
 
+/** Eén uur uit een dag (voor het uur-detail dat op aanvraag wordt geladen). */
+export type HourForecast = {
+  time: string; // ISO "2026-06-26T14:00"
+  hour: number; // 0–23
+  temp: number;
+  cloud: number; // %
+  precip: number; // mm
+  code: number; // WMO (per uur betrouwbaar)
+  sunMinutes: number; // minuten zon in dit uur (0–60)
+  isDay: boolean; // daglicht of nacht
+};
+
 /** Max. aantal bestemmingen waarvoor we het weer ophalen (grootste steden in bereik). */
 const MAX_CANDIDATES = 100;
 /** Aantal coördinaten per Open-Meteo request. */
@@ -116,6 +128,37 @@ async function fetchForecasts(
     chunks.map((c) => fetchForecastChunk(c, tripDays)),
   );
   return results.flat();
+}
+
+/**
+ * Haalt het uur-voor-uur weer op voor één stad en één dag. Wordt pas
+ * aangeroepen als de gebruiker een dag uitklapt, dus niet voor alle steden.
+ */
+export async function fetchHourly(
+  point: LatLon,
+  date: string,
+): Promise<HourForecast[]> {
+  const url =
+    `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
+    `&hourly=temperature_2m,cloud_cover,precipitation,weather_code,sunshine_duration,is_day` +
+    `&start_date=${date}&end_date=${date}&timezone=auto`;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Open-Meteo gaf status ${res.status}`);
+
+  const data = await res.json();
+  const h = data.hourly;
+
+  return h.time.map((time: string, i: number): HourForecast => ({
+    time,
+    hour: Number(time.slice(11, 13)),
+    temp: h.temperature_2m[i],
+    cloud: h.cloud_cover[i] ?? 0,
+    precip: h.precipitation[i] ?? 0,
+    code: h.weather_code[i] ?? 0,
+    sunMinutes: Math.round((h.sunshine_duration[i] ?? 0) / 60),
+    isDay: (h.is_day[i] ?? 0) === 1,
+  }));
 }
 
 /* ── Scoring ───────────────────────────────────────────────────────────── */
@@ -207,7 +250,7 @@ export function conditionFromCode(code: number): WeatherCondition {
   if (code === 0)
     return {
       label: "Onbewolkt",
-      icon: "sunny",
+      icon: "sky_0",
       filled: true,
       patch: PATCH.sun,
       iconColor: "text-secondary",
@@ -215,7 +258,7 @@ export function conditionFromCode(code: number): WeatherCondition {
   if (code === 1)
     return {
       label: "Overwegend zonnig",
-      icon: "sunny",
+      icon: "sky_1",
       filled: true,
       patch: PATCH.sun,
       iconColor: "text-secondary",
@@ -223,7 +266,7 @@ export function conditionFromCode(code: number): WeatherCondition {
   if (code === 2)
     return {
       label: "Half bewolkt",
-      icon: "partly_cloudy_day",
+      icon: "sky_2",
       filled: true,
       patch: PATCH.partly,
       iconColor: "text-secondary",
@@ -231,7 +274,7 @@ export function conditionFromCode(code: number): WeatherCondition {
   if (code === 3)
     return {
       label: "Bewolkt",
-      icon: "cloud",
+      icon: "sky_3",
       filled: true,
       patch: PATCH.cloud,
       iconColor: "text-outline",
@@ -286,55 +329,109 @@ export function conditionFromCode(code: number): WeatherCondition {
     };
   return {
     label: "Onweer",
-    icon: "thunderstorm",
+    icon: "storm",
     filled: true,
     patch: PATCH.storm,
     iconColor: "text-error",
   };
 }
 
+/** Goudgele tint voor (bijna) volle zon. */
+const SUN_GOLD = "text-[#f5a623]";
+
+/** WMO-codes die regen/motregen/buien zijn (geen sneeuw of onweer). */
+const isRainCode = (c: number) =>
+  (c >= 51 && c <= 67) || (c >= 80 && c <= 82);
+
 /**
- * Conditie (label + icoon) voor één dag op basis van de werkelijke zonuren.
- * Neerslag, mist, sneeuw en onweer (WMO-code ≥ 45) blijven leidend; voor droge
- * dagen kiezen we zon/half/bewolkt op het zon-aandeel i.p.v. de onbetrouwbare
- * dagelijkse WMO-code (die een zonnige dag soms toch "bewolkt" noemt).
+ * Regenicoon naar intensiteit: meer neerslag → voller icoon (meer streepjes).
+ * Dag-totalen lopen veel hoger op dan uur-waarden, dus de drempels verschillen:
+ * een dag met 2 mm is "heel weinig", een uur met 2 mm is al een flinke bui.
+ */
+export function rainIcon(precipMm: number, scale: "day" | "hour"): string {
+  const [light, heavy] = scale === "day" ? [2, 10] : [0.4, 2.5];
+  if (precipMm < light) return "rain_1"; // heel weinig: één streepje
+  if (precipMm < heavy) return "rain_2"; // matig: twee streepjes
+  return "rain_3"; // veel regen: drie streepjes
+}
+
+/** Vanaf zoveel mm dag-neerslag telt het als een echte "natte dag". */
+const WET_DAY_MM = 1;
+
+/**
+ * Conditie (label + icoon) voor één dag. De dagelijkse WMO-code is onbetrouwbaar
+ * als headline: hij pakt het zwaarste moment van het etmaal, waardoor een korte
+ * nachtbui een verder zonnige dag als "onweer" of "bewolkt" bestempelt. Daarom:
+ * sneeuw is altijd leidend; bij noemenswaardige neerslag (≥ 1 mm) tonen we
+ * onweer of regen-intensiteit; en bij een vrijwel droge dag bepaalt het werkelijke
+ * zon-aandeel het beeld (volle zon wordt goudgeel). De uur-strip toont een korte
+ * bui of onweer alsnog op het juiste uur.
  */
 export function conditionFromDay(day: {
   code: number;
+  precip: number;
   sunFraction: number;
 }): WeatherCondition {
-  if (day.code >= 45) return conditionFromCode(day.code);
-  if (day.sunFraction >= 0.85) return conditionFromCode(0); // Onbewolkt
+  // Sneeuw blijft altijd leidend.
+  if ((day.code >= 71 && day.code <= 77) || (day.code >= 85 && day.code <= 86))
+    return conditionFromCode(day.code);
+
+  // Echte natte dag: onweer (code ≥ 95) of regen naar intensiteit.
+  if (day.precip >= WET_DAY_MM) {
+    if (day.code >= 95) return conditionFromCode(day.code); // onweer
+    const base = conditionFromCode(isRainCode(day.code) ? day.code : 63);
+    return { ...base, icon: rainIcon(day.precip, "day") };
+  }
+
+  // Vrijwel droog: het zon-aandeel bepaalt het beeld.
+  if (day.sunFraction >= 0.85)
+    return { ...conditionFromCode(0), iconColor: SUN_GOLD }; // volle zon
   if (day.sunFraction >= 0.6) return conditionFromCode(1); // Overwegend zonnig
   if (day.sunFraction >= 0.35) return conditionFromCode(2); // Half bewolkt
+
+  // Weinig zon en toch droog: mist (indien zo gecodeerd) of bewolkt.
+  if (day.code === 45 || day.code === 48) return conditionFromCode(day.code);
+  return conditionFromCode(3); // Bewolkt
+}
+
+/**
+ * Conditie voor één uur. Per-uur WMO-code is betrouwbaar, dus die is leidend;
+ * regen schaalt met de neerslag van dat uur en een zonnig uur wordt goudgeel.
+ */
+export function conditionFromHour(hour: {
+  code: number;
+  precip: number;
+  sunMinutes: number;
+}): WeatherCondition {
+  if (hour.code >= 45) {
+    const base = conditionFromCode(hour.code);
+    return isRainCode(hour.code)
+      ? { ...base, icon: rainIcon(hour.precip, "hour") }
+      : base;
+  }
+  if (hour.sunMinutes >= 50)
+    return { ...conditionFromCode(0), iconColor: SUN_GOLD }; // bijna vol zon
+  if (hour.sunMinutes >= 30) return conditionFromCode(1); // Overwegend zonnig
+  if (hour.sunMinutes >= 10) return conditionFromCode(2); // Half bewolkt
   return conditionFromCode(3); // Bewolkt
 }
 
 /* ── Orkestratie ───────────────────────────────────────────────────────── */
 /**
- * Plant een reis: filtert steden op afstand, haalt de forecast op,
- * scoort de beste stretch en sorteert van beste naar slechtste match.
+ * Scoort een opgegeven lijst steden: haalt hun forecast op, scoort de reis en
+ * sorteert van beste naar slechtste match. Wordt gebruikt door planTrip én door
+ * het zoom-gedreven bijladen op de kaart.
  */
-export async function planTrip(
+export async function scoreCities(
+  cities: City[],
   origin: LatLon,
   prefs: Preferences,
 ): Promise<ScoredCity[]> {
-  // Kandidaten binnen bereik, gesorteerd op inwonertal (CITIES is al gesorteerd).
-  const candidates = CITIES.map((city) => ({
-    city,
-    dist: distanceKm(origin, city),
-  }))
-    .filter((c) => c.dist <= prefs.maxDistanceKm)
-    .slice(0, MAX_CANDIDATES);
+  if (cities.length === 0) return [];
 
-  if (candidates.length === 0) return [];
+  const forecasts = await fetchForecasts(cities, prefs.tripDays);
 
-  const forecasts = await fetchForecasts(
-    candidates.map((c) => c.city),
-    prefs.tripDays,
-  );
-
-  const scored: ScoredCity[] = candidates.map(({ city, dist }, i) => {
+  const scored: ScoredCity[] = cities.map((city, i) => {
     const { window, dayScores, score } = scoreTrip(forecasts[i], prefs);
     const avg = (sel: (d: DailyForecast) => number) =>
       window.reduce((a, d) => a + sel(d), 0) / window.length;
@@ -347,7 +444,7 @@ export async function planTrip(
 
     return {
       city,
-      distanceKm: dist,
+      distanceKm: distanceKm(origin, city),
       score: Math.round(clamp(score, 0, 10) * 10) / 10,
       goodDays: days.filter((d) => d.good).length,
       totalDays: window.length,
@@ -362,4 +459,24 @@ export async function planTrip(
   });
 
   return scored.sort((a, b) => b.score - a.score);
+}
+
+/**
+ * Plant een reis: filtert de grote steden op afstand (overzicht) en scoort de
+ * top. De kaart laadt bij het inzoomen kleinere plaatsen bij via scoreCities.
+ */
+export async function planTrip(
+  origin: LatLon,
+  prefs: Preferences,
+): Promise<ScoredCity[]> {
+  // Kandidaten binnen bereik, gesorteerd op inwonertal (CITIES is al gesorteerd).
+  const candidates = CITIES.map((city) => ({
+    city,
+    dist: distanceKm(origin, city),
+  }))
+    .filter((c) => c.dist <= prefs.maxDistanceKm)
+    .slice(0, MAX_CANDIDATES)
+    .map((c) => c.city);
+
+  return scoreCities(candidates, origin, prefs);
 }

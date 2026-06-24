@@ -2,7 +2,7 @@
 
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   MapContainer,
   Marker,
@@ -12,15 +12,31 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import { Icon } from "./Icon";
-import { conditionFromDay, type ScoredCity } from "../lib/weather";
+import { DayDetail } from "./DayDetail";
+import { ScoreInfo } from "./ScoreInfo";
+import {
+  conditionFromDay,
+  scoreCities,
+  type Preferences,
+  type ScoredCity,
+} from "../lib/weather";
+import { type City } from "../lib/cities";
+import { distanceKm } from "../lib/geo";
+import { weatherGlyphSvg } from "../lib/weatherGlyphs";
 
 type Props = {
   results: ScoredCity[];
   origin: { lat: number; lon: number; label: string };
+  prefs: Preferences;
+  minScore: number;
 };
 
 /** Vanaf dit zoomniveau tonen markers ook het weericoon (anders enkel het cijfer). */
 const ZOOM_FULL = 5;
+
+/** Alpha-suffix (8-cijferig hex) voor de badge-achtergrond, zodat de plaatsnaam
+ *  op de kaart eronder doorschemert. Tekst en rand blijven vol. */
+const BADGE_BG_ALPHA = "B3"; // ~70%
 
 /** Kleur (hex) van de score-badge — spiegelt de lijstweergave. */
 function scoreHex(score: number) {
@@ -33,15 +49,18 @@ function scoreHex(score: number) {
 /** Volledige badge: score + weericoon, gestapeld in een rond bolletje. */
 function badgeIconFull(score: number, iconName: string) {
   const { bg, fg, bd } = scoreHex(score);
+  // Eigen weer-glyph als SVG, anders het Material Symbols-lettertype.
+  const iconHtml =
+    weatherGlyphSvg(iconName, 16, fg) ??
+    `<span style="font-family:'Material Symbols Outlined';font-size:14px;
+      font-variation-settings:'FILL' 1;line-height:1">${iconName}</span>`;
   return L.divIcon({
     className: "",
     html: `<div style="width:44px;height:44px;border-radius:50%;display:flex;
-      flex-direction:column;align-items:center;justify-content:center;gap:1px;background:${bg};
+      flex-direction:column;align-items:center;justify-content:center;gap:1px;background:${bg}${BADGE_BG_ALPHA};
       color:${fg};border:2px solid ${bd};box-shadow:0 1px 4px rgba(0,0,0,.35);
       font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:14px;line-height:1">
-      <span>${score.toFixed(1)}</span>
-      <span style="font-family:'Material Symbols Outlined';font-size:14px;
-      font-variation-settings:'FILL' 1;line-height:1">${iconName}</span></div>`,
+      <span>${score.toFixed(1)}</span>${iconHtml}</div>`,
     iconSize: [44, 44],
     iconAnchor: [22, 22],
   });
@@ -53,7 +72,7 @@ function badgeIconMini(score: number) {
   return L.divIcon({
     className: "",
     html: `<div style="width:24px;height:24px;border-radius:50%;display:flex;
-      align-items:center;justify-content:center;background:${bg};color:${fg};
+      align-items:center;justify-content:center;background:${bg}${BADGE_BG_ALPHA};color:${fg};
       border:1px solid ${bd};box-shadow:0 1px 2px rgba(0,0,0,.25);
       font-family:'Archivo Narrow',sans-serif;font-weight:700;font-size:11px;
       line-height:1">${score.toFixed(1)}</div>`,
@@ -94,6 +113,95 @@ function ZoomWatcher({ setZoom }: { setZoom: (z: number) => void }) {
   return null;
 }
 
+/** Inwoner-drempel per zoomniveau: hoe dieper ingezoomd, hoe kleiner de
+ *  plaatsen die mogen verschijnen. null = te ver uitgezoomd (geen extra's). */
+function minPopForZoom(z: number): number | null {
+  if (z >= 11) return 15000;
+  if (z >= 10) return 30000;
+  if (z >= 9) return 50000;
+  if (z >= 8) return 100000;
+  if (z >= 7) return 200000;
+  return null;
+}
+
+/**
+ * Laadt bij het inzoomen/pannen kleinere plaatsen bij die binnen het kaartbeeld
+ * én binnen de gekozen afstand vallen, scoort ze en geeft ze terug. Reeds
+ * geladen plaatsen worden gecachet zodat terugpannen niets opnieuw ophaalt.
+ */
+function ProgressiveLoader({
+  origin,
+  prefs,
+  baseIds,
+  onLoaded,
+  onLoadingChange,
+}: {
+  origin: { lat: number; lon: number };
+  prefs: Preferences;
+  baseIds: Set<string>;
+  onLoaded: (scored: ScoredCity[]) => void;
+  onLoadingChange: (loading: boolean) => void;
+}) {
+  const map = useMap();
+  const fetchedRef = useRef<Set<string>>(new Set());
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // Nieuwe basisset → cache leeglopen.
+  useEffect(() => {
+    fetchedRef.current = new Set();
+  }, [baseIds]);
+
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+
+  useMapEvents({
+    moveend: () => schedule(),
+    zoomend: () => schedule(),
+  });
+
+  function schedule() {
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(load, 350);
+  }
+
+  async function load() {
+    const minPop = minPopForZoom(map.getZoom());
+    if (minPop === null) return;
+
+    const b = map.getBounds();
+    const params = new URLSearchParams({
+      minLat: String(b.getSouth()),
+      maxLat: String(b.getNorth()),
+      minLon: String(b.getWest()),
+      maxLon: String(b.getEast()),
+      minPop: String(minPop),
+      limit: "80",
+    });
+
+    onLoadingChange(true);
+    try {
+      const res = await fetch(`/api/cities?${params.toString()}`);
+      if (!res.ok) return;
+      const cities: City[] = await res.json();
+      const fresh = cities.filter(
+        (c) =>
+          !baseIds.has(c.id) &&
+          !fetchedRef.current.has(c.id) &&
+          distanceKm(origin, c) <= prefs.maxDistanceKm,
+      );
+      if (fresh.length === 0) return;
+      // Markeer vóór het scoren, zodat een tweede event ze niet dubbel ophaalt.
+      fresh.forEach((c) => fetchedRef.current.add(c.id));
+      onLoaded(await scoreCities(fresh, origin, prefs));
+    } catch {
+      // Bijladen is optioneel; stil falen.
+    } finally {
+      onLoadingChange(false);
+    }
+  }
+
+  return null;
+}
+
 const fmtDay = (iso: string) =>
   new Date(iso).toLocaleDateString("nl-BE", {
     weekday: "long",
@@ -101,11 +209,43 @@ const fmtDay = (iso: string) =>
     month: "short",
   });
 
-export default function ResultsMap({ results, origin }: Props) {
+export default function ResultsMap({
+  results,
+  origin,
+  prefs,
+  minScore,
+}: Props) {
   const dayCount = results[0]?.days.length ?? 0;
   // -1 = gemiddeld over de hele reis, anders een specifieke dag-index.
   const [dayIdx, setDayIdx] = useState(-1);
   const [zoom, setZoom] = useState(5);
+  // Aangeklikte bestemming → modale overlay over de kaart.
+  const [selected, setSelected] = useState<ScoredCity | null>(null);
+  // Bij het inzoomen bijgeladen kleinere plaatsen.
+  const [extra, setExtra] = useState<ScoredCity[]>([]);
+  const [loadingExtra, setLoadingExtra] = useState(false);
+
+  const baseIds = useMemo(
+    () => new Set(results.map((r) => r.city.id)),
+    [results],
+  );
+  const allResults = useMemo(() => [...results, ...extra], [results, extra]);
+
+  // Nieuwe zoekopdracht (andere basisset) → bijgeladen plaatsen vergeten.
+  useEffect(() => setExtra([]), [results]);
+
+  const handleLoaded = useCallback(
+    (scored: ScoredCity[]) => {
+      setExtra((prev) => {
+        const have = new Set([...baseIds, ...prev.map((r) => r.city.id)]);
+        const add = scored.filter(
+          (r) => r.score >= minScore && !have.has(r.city.id),
+        );
+        return add.length ? [...prev, ...add] : prev;
+      });
+    },
+    [baseIds, minScore],
+  );
 
   const points: [number, number][] = [
     [origin.lat, origin.lon],
@@ -144,7 +284,7 @@ export default function ResultsMap({ results, origin }: Props) {
       </div>
 
       {/* Kaart */}
-      <div className="h-[60vh] rounded-xl overflow-hidden border-2 border-outline-variant stamp-shadow">
+      <div className="relative h-[70vh] rounded-xl overflow-hidden border-2 border-outline-variant stamp-shadow">
         <MapContainer
           center={[origin.lat, origin.lon]}
           zoom={5}
@@ -158,6 +298,13 @@ export default function ResultsMap({ results, origin }: Props) {
           />
           <FitBounds points={points} />
           <ZoomWatcher setZoom={setZoom} />
+          <ProgressiveLoader
+            origin={origin}
+            prefs={prefs}
+            baseIds={baseIds}
+            onLoaded={handleLoaded}
+            onLoadingChange={setLoadingExtra}
+          />
 
           <Marker position={[origin.lat, origin.lon]} icon={originIcon}>
             <Popup>
@@ -167,11 +314,10 @@ export default function ResultsMap({ results, origin }: Props) {
             </Popup>
           </Marker>
 
-          {results.map((r) => {
+          {allResults.map((r) => {
             const day = dayIdx === -1 ? null : r.days[dayIdx];
             const score = day ? day.score : r.score;
             const cond = day ? conditionFromDay(day) : r.condition;
-            const temp = day ? Math.round(day.tMax) : r.avgTempMax;
             // Uitgezoomd: enkel cijfer + kleur. Ingezoomd: weericoon erbij.
             const full = zoom >= ZOOM_FULL;
             return (
@@ -180,25 +326,111 @@ export default function ResultsMap({ results, origin }: Props) {
                 position={[r.city.lat, r.city.lon]}
                 icon={full ? badgeIconFull(score, cond.icon) : badgeIconMini(score)}
                 zIndexOffset={Math.round(score * 100)}
-              >
-                <Popup>
-                  <strong style={{ textTransform: "uppercase" }}>
-                    {r.city.name}
-                  </strong>
-                  <br />
-                  {r.city.country} · {r.distanceKm} km
-                  <br />
-                  {cond.label} · {temp}°C
-                  <br />
-                  <span style={{ color: "#9d3d22", fontWeight: 700 }}>
-                    Score {score.toFixed(1)}
-                  </span>{" "}
-                  ({dayLabel})
-                </Popup>
-              </Marker>
+                eventHandlers={{ click: () => setSelected(r) }}
+              />
             );
           })}
         </MapContainer>
+
+        {loadingExtra && (
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-1.5 rounded-full bg-surface/95 border border-outline-variant px-3 py-1 stamp-shadow font-label-sm text-label-sm text-on-surface-variant">
+            <Icon name="progress_activity" className="text-base animate-spin" />
+            Meer plaatsen laden…
+          </div>
+        )}
+
+        {zoom < 7 && !loadingExtra && (
+          <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-1.5 rounded-full bg-surface/95 border border-outline-variant px-3 py-1 stamp-shadow font-label-sm text-label-sm text-on-surface-variant">
+            <Icon name="zoom_in" className="text-base" />
+            Zoom in voor meer bestemmingen
+          </div>
+        )}
+
+        {selected && (
+          <DetailOverlay
+            result={selected}
+            prefs={prefs}
+            onClose={() => setSelected(null)}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** Modale overlay over de kaart met het volledige dag- en uur-detail. De
+ *  backdrop dekt de kaart af zodat die niet meer aanklikbaar is. */
+function DetailOverlay({
+  result,
+  prefs,
+  onClose,
+}: {
+  result: ScoredCity;
+  prefs: Preferences;
+  onClose: () => void;
+}) {
+  const [showInfo, setShowInfo] = useState(false);
+
+  return (
+    <div
+      className="absolute inset-0 z-[1200] bg-on-surface/45 p-1.5 animate-fade-in"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div
+        className="bg-surface rounded-lg border-2 border-outline-variant stamp-shadow w-full h-full overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 p-3 border-b border-outline-variant bg-surface">
+          <div className="min-w-0">
+            <div className="font-headline-sm text-headline-sm uppercase leading-tight">
+              {result.city.name}
+            </div>
+            <div className="text-[10px] uppercase tracking-widest text-on-surface-variant">
+              {result.city.country} · {result.distanceKm} km ·{" "}
+              {result.goodDays}/{result.totalDays} goede dagen
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <div className="text-right">
+              <div className="font-headline-md text-headline-md text-primary leading-none">
+                {result.score.toFixed(1)}
+              </div>
+              <div className="text-[10px] uppercase tracking-widest text-on-surface-variant">
+                score
+              </div>
+            </div>
+            <button
+              onClick={() => setShowInfo((v) => !v)}
+              aria-label="Hoe wordt de score berekend?"
+              className={`w-8 h-8 rounded-full flex items-center justify-center transition-colors ${
+                showInfo
+                  ? "text-primary bg-surface-container-high"
+                  : "text-outline hover:text-primary hover:bg-surface-container-high"
+              }`}
+            >
+              <Icon name="info" filled={showInfo} className="text-[20px]" />
+            </button>
+            <button
+              onClick={onClose}
+              aria-label="Sluiten"
+              className="w-8 h-8 rounded-full hover:bg-surface-container-high flex items-center justify-center"
+            >
+              <Icon name="close" className="text-[20px]" />
+            </button>
+          </div>
+        </div>
+        {showInfo && (
+          <div className="px-3 pt-3">
+            <ScoreInfo
+              wantSun={prefs.wantSun}
+              wantDry={prefs.wantDry}
+              wantSnow={prefs.wantSnow}
+            />
+          </div>
+        )}
+        <DayDetail days={result.days} city={result.city} />
       </div>
     </div>
   );

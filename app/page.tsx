@@ -3,20 +3,16 @@
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import { Icon } from "./components/Icon";
+import { DayDetail, fmtDate } from "./components/DayDetail";
+import { ScoreInfo } from "./components/ScoreInfo";
 import { TopAppBar } from "./components/TopAppBar";
 import { geocode } from "./lib/geo";
-import {
-  conditionFromDay,
-  planTrip,
-  type DayForecast,
-  type Preferences,
-  type ScoredCity,
-} from "./lib/weather";
+import { planTrip, type Preferences, type ScoredCity } from "./lib/weather";
 
 const ResultsMap = dynamic(() => import("./components/ResultsMap"), {
   ssr: false,
   loading: () => (
-    <div className="h-[60vh] flex items-center justify-center text-outline font-label-lg text-label-lg uppercase tracking-widest">
+    <div className="h-[70vh] flex items-center justify-center text-outline font-label-lg text-label-lg uppercase tracking-widest">
       Kaart laden…
     </div>
   ),
@@ -42,6 +38,7 @@ export default function Home() {
   const [wantSun, setWantSun] = useState(true);
   const [wantDry, setWantDry] = useState(true);
   const [wantSnow, setWantSnow] = useState(false);
+  const [minScore, setMinScore] = useState(0);
 
   async function handleSearch() {
     if (!origin.trim()) {
@@ -66,7 +63,8 @@ export default function Home() {
         maxDistanceKm: maxDistance,
       };
       const ranked = await planTrip(place, prefs);
-      setResults(ranked);
+      // Minimale-score filter: toon enkel bestemmingen die het cijfer halen.
+      setResults(ranked.filter((r) => r.score >= minScore));
       setResolvedOrigin(`${place.name}, ${place.country}`);
       setOriginCoords({ lat: place.lat, lon: place.lon });
       setView("results");
@@ -100,6 +98,8 @@ export default function Home() {
           setWantDry={setWantDry}
           wantSnow={wantSnow}
           setWantSnow={setWantSnow}
+          minScore={minScore}
+          setMinScore={setMinScore}
           loading={loading}
           error={error}
           onSearch={handleSearch}
@@ -116,6 +116,7 @@ export default function Home() {
           wantDry={wantDry}
           wantSnow={wantSnow}
           maxDistance={maxDistance}
+          minScore={minScore}
           onBack={() => setView("input")}
         />
       )}
@@ -143,12 +144,15 @@ type InputProps = {
   setWantDry: (v: boolean) => void;
   wantSnow: boolean;
   setWantSnow: (v: boolean) => void;
+  minScore: number;
+  setMinScore: (v: number) => void;
   loading: boolean;
   error: string | null;
   onSearch: () => void;
 };
 
 function InputScreen(p: InputProps) {
+  const [showScoreInfo, setShowScoreInfo] = useState(false);
   return (
     <>
       <main className="flex-grow pt-md pb-40 px-4 md:px-container-margin max-w-2xl w-full mx-auto space-y-md animate-fade-in">
@@ -284,6 +288,49 @@ function InputScreen(p: InputProps) {
             <span>Dichtbij</span>
             <span>Expeditie</span>
           </div>
+        </section>
+
+        {/* Minimale score */}
+        <section className="expedition-card stamp-shadow p-md rounded-lg space-y-sm">
+          <div className="flex justify-between items-baseline">
+            <h3 className="font-label-lg text-label-lg uppercase tracking-widest text-outline flex items-center gap-1">
+              Minimale score
+              <button
+                type="button"
+                onClick={() => setShowScoreInfo((v) => !v)}
+                aria-label="Wat betekent de minimale score?"
+                className={`active-press transition-colors ${
+                  showScoreInfo
+                    ? "text-primary"
+                    : "text-outline hover:text-primary"
+                }`}
+              >
+                <Icon name="info" filled={showScoreInfo} className="text-[18px]" />
+              </button>
+            </h3>
+            <span className="font-headline-sm text-headline-sm text-primary">
+              {p.minScore === 0 ? "Alle" : `${p.minScore}+`}
+            </span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={9}
+            step={1}
+            value={p.minScore}
+            onChange={(e) => p.setMinScore(Number(e.target.value))}
+          />
+          <div className="flex justify-between text-[10px] uppercase font-bold text-outline/40 tracking-widest">
+            <span>Alles</span>
+            <span>Alleen top</span>
+          </div>
+          {showScoreInfo && (
+            <p className="font-label-sm text-label-sm text-on-surface-variant border-t border-outline-variant pt-sm animate-fade-in">
+              De score (0–10) is de gemiddelde weerkwaliteit over je hele reis.
+              Met een minimum toon je enkel bestemmingen die dat cijfer halen —
+              kies bv. <strong>9</strong> om alleen de toppers te zien.
+            </p>
+          )}
         </section>
 
         {/* Weersvoorkeuren */}
@@ -438,6 +485,7 @@ function ResultsScreen({
   wantDry,
   wantSnow,
   maxDistance,
+  minScore,
   onBack,
 }: {
   results: ScoredCity[];
@@ -450,12 +498,25 @@ function ResultsScreen({
   wantDry: boolean;
   wantSnow: boolean;
   maxDistance: number;
+  minScore: number;
   onBack: () => void;
 }) {
   const top = results.slice(0, 20);
   const [openId, setOpenId] = useState<string | null>(null);
   const [showInfo, setShowInfo] = useState(false);
-  const [resultView, setResultView] = useState<"list" | "map">("list");
+  const [resultView, setResultView] = useState<"list" | "map">("map");
+
+  // Dezelfde voorkeuren als de zoekopdracht; nodig om bijgeladen kaartplaatsen
+  // op identieke wijze te scoren.
+  const prefs: Preferences = {
+    minTemp,
+    maxTemp,
+    wantSun,
+    wantDry,
+    wantSnow,
+    tripDays,
+    maxDistanceKm: maxDistance,
+  };
 
   return (
     <main className="flex-grow pt-md pb-24 px-4 md:px-container-margin max-w-2xl w-full mx-auto space-y-md animate-fade-in">
@@ -520,8 +581,8 @@ function ResultsScreen({
         <div className="flex p-xs bg-surface-container-high rounded-sm">
           {(
             [
-              ["list", "Lijst", "format_list_bulleted"],
               ["map", "Kaart", "map"],
+              ["list", "Lijst", "format_list_bulleted"],
             ] as const
           ).map(([key, label, icon]) => (
             <button
@@ -547,16 +608,22 @@ function ResultsScreen({
         <div className="text-center py-lg space-y-2 text-on-surface-variant">
           <Icon name="travel_explore" className="text-[40px] text-outline" />
           <p className="font-headline-sm text-headline-sm uppercase">
-            Geen bestemmingen in bereik
+            {minScore > 0
+              ? `Geen bestemmingen met score ${minScore}+`
+              : "Geen bestemmingen in bereik"}
           </p>
           <p className="font-body-md text-sm">
-            Verhoog de maximale afstand en probeer opnieuw.
+            {minScore > 0
+              ? "Verlaag de minimale score of vergroot de afstand en probeer opnieuw."
+              : "Verhoog de maximale afstand en probeer opnieuw."}
           </p>
         </div>
       ) : resultView === "map" && originCoords ? (
         <ResultsMap
           results={results}
           origin={{ ...originCoords, label: origin }}
+          prefs={prefs}
+          minScore={minScore}
         />
       ) : (
         <div className="space-y-gutter">
@@ -581,12 +648,6 @@ function ResultsScreen({
   );
 }
 
-const fmtDate = (iso: string) =>
-  new Date(iso).toLocaleDateString("nl-BE", {
-    day: "numeric",
-    month: "short",
-  });
-
 function scoreBadge(score: number) {
   if (score >= 9)
     return "bg-secondary-fixed-dim text-on-secondary-container border-secondary"; // heel fel
@@ -595,61 +656,6 @@ function scoreBadge(score: number) {
   if (score >= 7)
     return "bg-secondary-fixed text-on-secondary-container border-secondary/50"; // zachter
   return "bg-surface-variant text-on-surface-variant border-outline"; // grijs
-}
-
-function ScoreInfo({
-  wantSun,
-  wantDry,
-  wantSnow,
-}: {
-  wantSun: boolean;
-  wantDry: boolean;
-  wantSnow: boolean;
-}) {
-  return (
-    <div className="border-2 border-dashed border-outline-variant bg-surface-container-highest rounded-lg p-md space-y-sm animate-fade-in">
-      <h4 className="font-headline-sm text-headline-sm uppercase text-primary flex items-center gap-2">
-        <Icon name="calculate" /> Hoe de score werkt
-      </h4>
-      <p className="font-body-md text-sm text-on-surface-variant">
-        Elke dag krijgt een cijfer van 0 tot 10. De eindscore is het{" "}
-        <strong>gemiddelde over alle dagen</strong> van je reis — hoe meer goede
-        dagen, hoe hoger (ook met een regendag ertussen).
-      </p>
-      <ul className="space-y-2 font-body-md text-sm">
-        <li className="flex gap-2">
-          <Icon name="water_drop" className="text-tertiary text-sm" />
-          <span>
-            <strong>Droog</strong> — neerslag en regenkans drukken de score.
-            Weegt het zwaarst{wantDry ? " (en extra, want je koos “droog”)" : ""}.
-          </span>
-        </li>
-        <li className="flex gap-2">
-          <Icon name="thermostat" className="text-primary text-sm" />
-          <span>
-            <strong>Temperatuur</strong> — binnen jouw min–max band; te koud of
-            te warm drukt de score. Weegt mee, maar net iets minder dan droogte.
-          </span>
-        </li>
-        <li className="flex gap-2">
-          <Icon name="sunny" className="text-secondary text-sm" filled />
-          <span>
-            <strong>Zon</strong> — minder bewolking = hoger
-            {wantSun ? " (zwaarder, want je koos “zonnig”)" : ""}.
-          </span>
-        </li>
-        {wantSnow && (
-          <li className="flex gap-2">
-            <Icon name="weather_snowy" className="text-tertiary text-sm" />
-            <span>
-              <strong>Sneeuw</strong> — sneeuwval en koude met neerslag scoren
-              hoog (zwaarder, want je koos “sneeuw”).
-            </span>
-          </li>
-        )}
-      </ul>
-    </div>
-  );
 }
 
 function ResultCard({
@@ -760,65 +766,8 @@ function ResultCard({
         </div>
       </button>
 
-      {expanded && <DayDetail days={result.days} />}
+      {expanded && <DayDetail days={result.days} city={result.city} />}
     </article>
   );
 }
 
-function DayDetail({ days }: { days: DayForecast[] }) {
-  return (
-    <div className="border-t-2 border-dashed border-outline-variant bg-surface-container-low px-3 md:px-md py-base animate-fade-in">
-      <div className="flex flex-col">
-        {days.map((day) => (
-          <DayRow key={day.date} day={day} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function DayRow({ day }: { day: DayForecast }) {
-  const cond = conditionFromDay(day);
-  return (
-    <div
-      className={`flex items-center gap-2 py-sm border-l-4 pl-2 ${
-        day.good
-          ? "border-secondary bg-secondary-container/15"
-          : "border-transparent opacity-70"
-      }`}
-    >
-      <div className="w-12 flex-shrink-0">
-        <div className="font-label-sm text-label-sm uppercase tracking-wide">
-          {fmtWeekday(day.date)}
-        </div>
-        <div className="text-[10px] text-on-surface-variant">
-          {fmtDate(day.date)}
-        </div>
-      </div>
-      <Icon
-        name={cond.icon}
-        filled={cond.filled}
-        className={`text-[22px] flex-shrink-0 ${cond.iconColor}`}
-      />
-      <span className="font-headline-sm text-headline-sm w-9 flex-shrink-0">
-        {Math.round(day.tMax)}°
-      </span>
-      <div className="flex-grow flex items-center gap-2 text-xs text-on-surface-variant min-w-0">
-        <span className="flex items-center gap-0.5">
-          <Icon name="sunny" className="text-sm" filled />
-          {day.sunHours.toFixed(1)}u
-        </span>
-        <span className="flex items-center gap-0.5">
-          <Icon name="rainy" className="text-sm" />
-          {day.precip}mm
-        </span>
-      </div>
-      <span className="w-8 text-right font-headline-sm text-headline-sm text-primary flex-shrink-0">
-        {day.score.toFixed(1)}
-      </span>
-    </div>
-  );
-}
-
-const fmtWeekday = (iso: string) =>
-  new Date(iso).toLocaleDateString("nl-BE", { weekday: "short" });
