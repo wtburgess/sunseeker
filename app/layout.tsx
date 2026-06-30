@@ -1,10 +1,21 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "SUNSEEKER | Vind je goede weer",
   description:
     "Plan je reis op basis van het weer dat jij zoekt. Sunseeker scoort bestemmingen op de match met jouw ideale weer.",
+};
+
+// Mobiel-eerst: full-screen app-gevoel, notch/safe-area-ondersteuning en
+// geen per ongeluk inzoomen op de pagina (de kaart regelt zelf het zoomen).
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#fff9ee",
 };
 
 export default function RootLayout({

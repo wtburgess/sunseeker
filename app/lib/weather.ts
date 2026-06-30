@@ -416,6 +416,81 @@ export function conditionFromHour(hour: {
   return conditionFromCode(3); // Bewolkt
 }
 
+/* ── Actueel weer (nu) ─────────────────────────────────────────────────── */
+/** Het weer op dit moment voor één locatie. */
+export type CurrentWeather = {
+  code: number; // WMO
+  temp: number; // °C
+  precip: number; // mm (laatste uur)
+};
+
+/** Haalt het weer-op-dit-moment op voor één punt (Open-Meteo `current`). */
+export async function fetchCurrent(point: LatLon): Promise<CurrentWeather> {
+  const url =
+    `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
+    `&current=temperature_2m,precipitation,weather_code&timezone=auto`;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Open-Meteo gaf status ${res.status}`);
+
+  const data = await res.json();
+  const c = data.current ?? {};
+  return {
+    code: c.weather_code ?? 0,
+    temp: c.temperature_2m ?? 0,
+    precip: c.precipitation ?? 0,
+  };
+}
+
+/** Actueel weer voor meerdere punten in één keer (gebatcht + gechunkt). */
+async function fetchCurrentChunk(points: LatLon[]): Promise<CurrentWeather[]> {
+  const lat = points.map((p) => p.lat).join(",");
+  const lon = points.map((p) => p.lon).join(",");
+  const url =
+    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+    `&current=temperature_2m,precipitation,weather_code&timezone=auto`;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Open-Meteo gaf status ${res.status}`);
+
+  const data = await res.json();
+  const list = Array.isArray(data) ? data : [data];
+  return list.map((entry): CurrentWeather => {
+    const c = entry.current ?? {};
+    return {
+      code: c.weather_code ?? 0,
+      temp: c.temperature_2m ?? 0,
+      precip: c.precipitation ?? 0,
+    };
+  });
+}
+
+/** Haalt het actuele weer op voor een lijst punten (volgorde blijft behouden). */
+export async function fetchCurrents(
+  points: LatLon[],
+): Promise<CurrentWeather[]> {
+  if (points.length === 0) return [];
+  const chunks: LatLon[][] = [];
+  for (let i = 0; i < points.length; i += CHUNK_SIZE) {
+    chunks.push(points.slice(i, i + CHUNK_SIZE));
+  }
+  const results = await Promise.all(chunks.map(fetchCurrentChunk));
+  return results.flat();
+}
+
+/**
+ * Conditie (label + icoon) voor het actuele weer. De huidige WMO-code is
+ * betrouwbaar en dus leidend; bij regen schaalt het icoon met de neerslag.
+ */
+export function conditionFromCurrent(cur: CurrentWeather): WeatherCondition {
+  if ((cur.code >= 71 && cur.code <= 77) || (cur.code >= 85 && cur.code <= 86))
+    return conditionFromCode(cur.code); // sneeuw
+  if (cur.code >= 95) return conditionFromCode(cur.code); // onweer
+  if (isRainCode(cur.code))
+    return { ...conditionFromCode(cur.code), icon: rainIcon(cur.precip, "hour") };
+  return conditionFromCode(cur.code);
+}
+
 /* ── Orkestratie ───────────────────────────────────────────────────────── */
 /**
  * Scoort een opgegeven lijst steden: haalt hun forecast op, scoort de reis en
