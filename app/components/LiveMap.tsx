@@ -6,7 +6,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   MapContainer,
   Marker,
-  Popup,
   TileLayer,
   useMap,
   useMapEvents,
@@ -20,6 +19,7 @@ import {
   type WeatherCondition,
 } from "../lib/weather";
 import { type City } from "../lib/cities";
+import { distanceKm } from "../lib/geo";
 import { weatherGlyphSvg } from "../lib/weatherGlyphs";
 
 type Coords = { lat: number; lon: number };
@@ -74,25 +74,33 @@ function wxIconColor(code: number): string {
   return "#44524a"; // nat/winters
 }
 
-/** Schaduw zodat een achtergrondloos icoon leesbaar blijft op de lichte kaart. */
-const ICON_SHADOW = "filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.45))";
-const TEXT_HALO = "text-shadow:0 1px 2px rgba(255,249,238,.95)";
+/**
+ * Gedeelde stijl om de temperatuur onder elk icoon op dezelfde manier optisch te
+ * centreren: full-width + gecentreerd, met een kleine padding-left die de breedte
+ * van het °-teken compenseert (anders staan de cijfers net te links).
+ */
+const TEMP_CENTER =
+  "display:block;width:100%;box-sizing:border-box;text-align:center;padding-left:0.35em;" +
+  "font-family:'Archivo Narrow',sans-serif;font-weight:700;line-height:1;";
 
-/** Marker op de huidige locatie: enkel weericoon + temperatuur (accentkleur). */
+/** Marker op de huidige locatie: weericoon + temperatuur in een accent-cirkel. */
 function currentIcon(cond: WeatherCondition, temp: number) {
   const iconHtml =
-    weatherGlyphSvg(cond.icon, 26, ACCENT) ??
-    `<span style="font-family:'Material Symbols Outlined';font-size:24px;` +
+    weatherGlyphSvg(cond.icon, 22, ACCENT) ??
+    `<span style="font-family:'Material Symbols Outlined';font-size:20px;` +
       `font-variation-settings:'FILL' 1;line-height:1;color:${ACCENT}">${cond.icon}</span>`;
   return L.divIcon({
     className: "",
     html:
-      `<div style="display:flex;flex-direction:column;align-items:center;gap:0px;${ICON_SHADOW}">` +
+      // Enkel een accent-ring rond het icoon; geen achtergrond, zodat de
+      // onderliggende stad zichtbaar blijft. Icoon + temperatuur zonder schaduw.
+      `<div style="width:46px;height:46px;border-radius:50%;display:flex;` +
+      `flex-direction:column;align-items:center;justify-content:center;gap:0px;` +
+      `border:3px solid ${ACCENT}">` +
       iconHtml +
-      `<span style="font-family:'Archivo Narrow',sans-serif;font-weight:700;` +
-      `font-size:13px;line-height:1;color:${ACCENT};${TEXT_HALO}">${Math.round(temp)}°</span></div>`,
-    iconSize: [42, 42],
-    iconAnchor: [21, 21],
+      `<span style="${TEMP_CENTER}font-size:12px;color:${ACCENT}">${Math.round(temp)}°</span></div>`,
+    iconSize: [46, 46],
+    iconAnchor: [23, 23],
   });
 }
 
@@ -107,10 +115,9 @@ function nearbyIcon(cur: CurrentWeather) {
   return L.divIcon({
     className: "",
     html:
-      `<div style="display:flex;flex-direction:column;align-items:center;gap:0px;${ICON_SHADOW}">` +
+      `<div style="display:flex;flex-direction:column;align-items:center;gap:0px">` +
       iconHtml +
-      `<span style="font-family:'Archivo Narrow',sans-serif;font-weight:700;` +
-      `font-size:13px;line-height:1;color:${color};${TEXT_HALO}">${Math.round(cur.temp)}°</span></div>`,
+      `<span style="${TEMP_CENTER}font-size:13px;color:${color}">${Math.round(cur.temp)}°</span></div>`,
     iconSize: [42, 42],
     iconAnchor: [21, 21],
   });
@@ -232,7 +239,15 @@ function MapEngine({
   return null;
 }
 
-export default function LiveMap({ center }: { center: Coords }) {
+export default function LiveMap({
+  center,
+  label,
+  onSelect,
+}: {
+  center: Coords;
+  label: string;
+  onSelect: (place: { name: string; lat: number; lon: number }) => void;
+}) {
   const [cur, setCur] = useState<CurrentWeather | null>(null);
   const [nearby, setNearby] = useState<NearbyPlace[]>([]);
   const [loading, setLoading] = useState(false);
@@ -270,20 +285,26 @@ export default function LiveMap({ center }: { center: Coords }) {
           onLoading={setLoading}
         />
 
-        {/* Plaatsen in beeld met hun actuele weer. */}
-        {nearby.map(({ city, cur: c }) => (
-          <Marker
-            key={city.id}
-            position={[city.lat, city.lon]}
-            icon={nearbyIcon(c)}
-          >
-            <Popup>
-              <strong>{city.name}</strong>
-              <br />
-              {conditionFromCurrent(c).label} · {Math.round(c.temp)}°
-            </Popup>
-          </Marker>
-        ))}
+        {/* Plaatsen in beeld met hun actuele weer. De stad die met het
+            middelpunt samenvalt laten we weg — anders staat er een dubbel
+            icoon achter de eigen-locatie-marker. */}
+        {nearby
+          .filter(({ city }) => distanceKm(center, city) > 2)
+          .map(({ city, cur: c }) => (
+            <Marker
+              key={city.id}
+              position={[city.lat, city.lon]}
+              icon={nearbyIcon(c)}
+              eventHandlers={{
+                click: () =>
+                  onSelect({
+                    name: city.name,
+                    lat: city.lat,
+                    lon: city.lon,
+                  }),
+              }}
+            />
+          ))}
 
         {/* Eigen locatie bovenop, altijd zichtbaar. */}
         {cond && cur && (
@@ -291,13 +312,15 @@ export default function LiveMap({ center }: { center: Coords }) {
             position={[center.lat, center.lon]}
             icon={currentIcon(cond, cur.temp)}
             zIndexOffset={1000}
-          >
-            <Popup>
-              <strong>Hier ben je</strong>
-              <br />
-              {cond.label} · {Math.round(cur.temp)}°
-            </Popup>
-          </Marker>
+            eventHandlers={{
+              click: () =>
+                onSelect({
+                  name: label || "Mijn locatie",
+                  lat: center.lat,
+                  lon: center.lon,
+                }),
+            }}
+          />
         )}
       </MapContainer>
 

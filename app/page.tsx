@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useState } from "react";
 import { TopAppBar } from "./components/TopAppBar";
 import { LocationBar } from "./components/LocationBar";
+import { CityDetail } from "./components/CityDetail";
 import { geocode, reverseGeocode } from "./lib/geo";
 
 export type Coords = { lat: number; lon: number };
@@ -26,6 +27,12 @@ export default function Home() {
   const [query, setQuery] = useState("");
   const [locating, setLocating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  // Aangeklikte plaats → dag-detailoverzicht (over de zoekbalk + kaart).
+  const [selected, setSelected] = useState<{
+    name: string;
+    lat: number;
+    lon: number;
+  } | null>(null);
 
   // Locatie van pc/smartphone inlezen: kaart centreren én de plaatsnaam in het
   // invulveld tonen (net alsof je hem had ingetypt en op Enter gedrukt).
@@ -83,26 +90,33 @@ export default function Home() {
           schermvullend; op mobiel gewoon het volledige scherm. */}
       <div className="flex flex-col w-full h-full bg-surface overflow-hidden md:w-[400px] md:h-[min(820px,calc(100dvh_-_3rem))] md:rounded-[2rem] md:border-2 md:border-outline-variant md:shadow-2xl">
         <TopAppBar />
-        <LocationBar
-          value={query}
-          onChange={setQuery}
-          onLocate={useDeviceLocation}
-          locating={locating}
-          onSubmitPlace={handlePlace}
-          notice={notice}
-        />
-        <div className="relative flex-grow min-h-0">
-          {coords ? (
-            <LiveMap center={coords} />
-          ) : (
-            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-on-surface-variant">
-              <span className="material-symbols-outlined text-[40px] text-primary animate-pulse">
-                my_location
-              </span>
-              <p className="font-label-lg text-label-lg uppercase tracking-widest">
-                Je locatie bepalen…
-              </p>
-            </div>
+        {/* Alles onder de titel; het detailoverzicht overdekt straks ook de
+            zoekbalk (start net onder de hoofdtitel). */}
+        <div className="relative flex-grow min-h-0 flex flex-col">
+          <LocationBar
+            value={query}
+            onChange={setQuery}
+            onLocate={useDeviceLocation}
+            locating={locating}
+            onSubmitPlace={handlePlace}
+            notice={notice}
+          />
+          <div className="relative flex-grow min-h-0">
+            {coords ? (
+              <LiveMap center={coords} label={query} onSelect={setSelected} />
+            ) : (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-on-surface-variant">
+                <span className="material-symbols-outlined text-[40px] text-primary animate-pulse">
+                  my_location
+                </span>
+                <p className="font-label-lg text-label-lg uppercase tracking-widest">
+                  Je locatie bepalen…
+                </p>
+              </div>
+            )}
+          </div>
+          {selected && (
+            <CityDetail place={selected} onClose={() => setSelected(null)} />
           )}
         </div>
       </div>

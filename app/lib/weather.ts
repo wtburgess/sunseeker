@@ -64,9 +64,12 @@ export type HourForecast = {
   temp: number;
   cloud: number; // %
   precip: number; // mm
+  precipProb: number; // % kans
   code: number; // WMO (per uur betrouwbaar)
   sunMinutes: number; // minuten zon in dit uur (0–60)
   isDay: boolean; // daglicht of nacht
+  windBft: number; // windkracht (Beaufort)
+  windDir: number; // windrichting (graden, waar de wind vandaan komt)
 };
 
 /** Max. aantal bestemmingen waarvoor we het weer ophalen (grootste steden in bereik). */
@@ -140,7 +143,8 @@ export async function fetchHourly(
 ): Promise<HourForecast[]> {
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
-    `&hourly=temperature_2m,cloud_cover,precipitation,weather_code,sunshine_duration,is_day` +
+    `&hourly=temperature_2m,cloud_cover,precipitation,precipitation_probability,` +
+    `weather_code,sunshine_duration,is_day,wind_speed_10m,wind_direction_10m` +
     `&start_date=${date}&end_date=${date}&timezone=auto`;
 
   const res = await fetch(url);
@@ -155,9 +159,12 @@ export async function fetchHourly(
     temp: h.temperature_2m[i],
     cloud: h.cloud_cover[i] ?? 0,
     precip: h.precipitation[i] ?? 0,
+    precipProb: h.precipitation_probability[i] ?? 0,
     code: h.weather_code[i] ?? 0,
     sunMinutes: Math.round((h.sunshine_duration[i] ?? 0) / 60),
     isDay: (h.is_day[i] ?? 0) === 1,
+    windBft: windToBeaufort(h.wind_speed_10m[i] ?? 0),
+    windDir: h.wind_direction_10m[i] ?? 0,
   }));
 }
 
@@ -416,6 +423,27 @@ export function conditionFromHour(hour: {
   return conditionFromCode(3); // Bewolkt
 }
 
+/**
+ * Zoals conditionFromHour, maar met dag/nacht: 's nachts tonen we maan-iconen
+ * (op basis van de bewolking) i.p.v. een zonnetje. Neerslag/onweer/sneeuw blijven
+ * dag én nacht dezelfde iconen.
+ */
+export function conditionFromHourDayNight(hour: HourForecast): WeatherCondition {
+  // Neerslag/onweer/sneeuw: dag én nacht dezelfde iconen. Overdag: zon-logica.
+  if (hour.code >= 45 || hour.isDay) return conditionFromHour(hour);
+
+  // Nacht en droog: altijd een maan (helder of maan-met-wolk), nooit een kale
+  // dag-wolk, zodat de nacht duidelijk als nacht leesbaar is.
+  const clear = hour.cloud < 40;
+  return {
+    label: clear ? "Heldere nacht" : "Bewolkte nacht",
+    icon: clear ? "moon" : "moon_cloud",
+    filled: true,
+    patch: clear ? PATCH.cloud : PATCH.partly,
+    iconColor: "text-outline",
+  };
+}
+
 /* ── Actueel weer (nu) ─────────────────────────────────────────────────── */
 /** Het weer op dit moment voor één locatie. */
 export type CurrentWeather = {
@@ -489,6 +517,65 @@ export function conditionFromCurrent(cur: CurrentWeather): WeatherCondition {
   if (isRainCode(cur.code))
     return { ...conditionFromCode(cur.code), icon: rainIcon(cur.precip, "hour") };
   return conditionFromCode(cur.code);
+}
+
+/* ── Dag-detail (meerdaagse voorspelling voor één plaats) ──────────────── */
+/** Eén dag uit de meerdaagse voorspelling voor het detailoverzicht. */
+export type DailyDetail = {
+  date: string;
+  tMin: number;
+  tMax: number;
+  sunHours: number; // zonuren
+  precip: number; // mm
+  precipProb: number; // % kans
+  code: number; // WMO
+  sunFraction: number; // aandeel zon t.o.v. daglengte (0–1) → voor het icoon
+  windBft: number; // windkracht (Beaufort)
+  windDir: number; // dominante windrichting (graden, waar de wind vandaan komt)
+};
+
+/** Windsnelheid (km/u) → Beaufort. */
+export function windToBeaufort(kmh: number): number {
+  const upper = [1, 6, 12, 20, 29, 39, 50, 62, 75, 89, 103, 118];
+  for (let b = 0; b < upper.length; b++) if (kmh < upper[b]) return b;
+  return 12;
+}
+
+const DETAIL_VARS =
+  "temperature_2m_max,temperature_2m_min,precipitation_sum," +
+  "precipitation_probability_max,sunshine_duration,daylight_duration," +
+  "weather_code,wind_speed_10m_max,wind_direction_10m_dominant";
+
+/** Haalt de meerdaagse voorspelling met alle detailvelden op voor één plaats. */
+export async function fetchDailyDetail(
+  point: LatLon,
+  days: number,
+): Promise<DailyDetail[]> {
+  const url =
+    `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
+    `&daily=${DETAIL_VARS}&forecast_days=${days}&timezone=auto`;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Open-Meteo gaf status ${res.status}`);
+
+  const data = await res.json();
+  const d = data.daily;
+  return d.time.map((date: string, i: number): DailyDetail => {
+    const sunSec = d.sunshine_duration[i] ?? 0;
+    const dayLight = d.daylight_duration[i] ?? 0;
+    return {
+      date,
+      tMin: Math.round(d.temperature_2m_min[i]),
+      tMax: Math.round(d.temperature_2m_max[i]),
+      sunHours: sunSec / 3600,
+      precip: d.precipitation_sum[i] ?? 0,
+      precipProb: d.precipitation_probability_max[i] ?? 0,
+      code: d.weather_code[i] ?? 0,
+      sunFraction: dayLight > 0 ? clamp(sunSec / dayLight, 0, 1) : 0,
+      windBft: windToBeaufort(d.wind_speed_10m_max[i] ?? 0),
+      windDir: d.wind_direction_10m_dominant[i] ?? 0,
+    };
+  });
 }
 
 /* ── Orkestratie ───────────────────────────────────────────────────────── */

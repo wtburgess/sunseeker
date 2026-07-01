@@ -52,6 +52,12 @@ function sun(cx: number, cy: number, r: number): string {
 const cloudAt = (cx: number, cy: number, s: number) =>
   `<g transform="translate(${(cx - s * 12).toFixed(2)},${(cy - s * 10.5).toFixed(2)}) scale(${s})">${CLOUD}</g>`;
 
+/** Wassende maan (crescent), getekend in een 24-box, geschaald en geplaatst. */
+const MOON_PATH = "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z";
+const moonAt = (cx: number, cy: number, s: number) =>
+  `<g transform="translate(${(cx - s * 12).toFixed(2)},${(cy - s * 12).toFixed(2)}) scale(${s})">` +
+  `<path d="${MOON_PATH}" fill="currentColor"/></g>`;
+
 // Strakke kadering rond wolk + streepjes/bliksem.
 const RAIN_VB = "3 3.5 18 18";
 // Kadering voor de zon→bewolkt-trap.
@@ -72,6 +78,12 @@ export const WEATHER_GLYPHS: Record<string, Glyph> = {
   sky_1: { viewBox: SKY_VB, body: sun(8.6, 9, 3.1) + cloudAt(14.6, 15.4, 0.62) },
   sky_2: { viewBox: SKY_VB, body: sun(8, 8, 2.6) + cloudAt(13, 14.8, 0.85) },
   sky_3: { viewBox: SKY_VB, body: cloudAt(11, 11, 1.15) },
+  // Nacht: heldere maan en maan-met-wolk (zelfde formaat als de zon-trap).
+  moon: { viewBox: SKY_VB, body: moonAt(12, 12, 0.82) },
+  moon_cloud: {
+    viewBox: SKY_VB,
+    body: moonAt(8.4, 8, 0.5) + cloudAt(13, 14.8, 0.85),
+  },
 };
 
 /**
