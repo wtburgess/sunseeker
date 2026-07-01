@@ -111,61 +111,65 @@ function DayRow({
     <li className="border-b border-outline-variant">
       <button
         onClick={() => onOpen(d.date)}
-        className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:bg-surface-container-high/60 active-press"
+        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-surface-container-high/60 active-press"
       >
-      {/* Dag + datum */}
-      <div className="w-9 shrink-0 leading-none">
-        <div className="font-headline-sm text-[15px] capitalize">
-          {fmtWeekday(d.date)}
+        {/* Dag + datum */}
+        <div className="w-12 shrink-0 leading-none">
+          <div className="font-headline-sm text-[19px] capitalize">
+            {fmtWeekday(d.date)}
+          </div>
+          <div className="text-[13px] text-outline mt-0.5">
+            {fmtDayMonth(d.date)}
+          </div>
         </div>
-        <div className="text-[10px] text-outline mt-0.5">{fmtDayMonth(d.date)}</div>
-      </div>
 
-      {/* Weericoon */}
-      <Icon
-        name={cond.icon}
-        filled={cond.filled}
-        className={`text-[26px] shrink-0 ${cond.iconColor}`}
-      />
-
-      {/* Max (fel) boven min (gedempt) */}
-      <div className="w-10 shrink-0 text-right leading-none">
-        <div className="text-[15px] font-bold text-primary">{d.tMax}°</div>
-        <div className="text-[11px] text-on-surface-variant mt-0.5">{d.tMin}°</div>
-      </div>
-
-      {/* Zon + (enkel bij neerslag) kans/mm */}
-      <div className="flex-grow min-w-0 pl-1 flex flex-col gap-0.5 text-[11px] text-on-surface-variant leading-none">
-        <span className="flex items-center gap-1">
-          <Icon name="sunny" filled className="text-[13px] text-secondary" />
-          {nl1(d.sunHours)} u
-        </span>
-        {hasRain && (
-          <span className="flex items-center gap-2">
-            {hasProb && (
-              <span className="flex items-center gap-0.5">
-                <Icon name="water_drop" className="text-[13px]" />
-                {Math.round(d.precipProb)}%
-              </span>
-            )}
-            <span className="flex items-center gap-0.5">
-              <Icon name="rainy" className="text-[13px]" />
-              {nl1(d.precip)}mm
-            </span>
-          </span>
-        )}
-      </div>
-
-      {/* Wind: pijl in de stroomrichting + Beaufort */}
-      <div className="w-9 shrink-0 flex flex-col items-center text-on-surface-variant leading-none">
+        {/* Weericoon */}
         <Icon
-          name="navigation"
-          filled
-          className="text-[15px]"
-          style={{ transform: `rotate(${d.windDir + 180}deg)` }}
+          name={cond.icon}
+          filled={cond.filled}
+          className={`text-[38px] shrink-0 ${cond.iconColor}`}
         />
-        <span className="text-[10px] mt-0.5">{d.windBft} Bft</span>
-      </div>
+
+        {/* Max (fel) boven min (gedempt) */}
+        <div className="w-12 shrink-0 text-right leading-none">
+          <div className="text-[22px] font-bold text-primary">{d.tMax}°</div>
+          <div className="text-[15px] text-on-surface-variant mt-0.5">
+            {d.tMin}°
+          </div>
+        </div>
+
+        {/* Zon + (enkel bij neerslag) kans/mm */}
+        <div className="flex-grow min-w-0 pl-1 flex flex-col gap-1 text-[15px] text-on-surface-variant leading-none">
+          <span className="flex items-center gap-1">
+            <Icon name="sunny" filled className="text-[18px] text-secondary" />
+            {nl1(d.sunHours)} u
+          </span>
+          {hasRain && (
+            <span className="flex items-center gap-2.5">
+              {hasProb && (
+                <span className="flex items-center gap-0.5">
+                  <Icon name="water_drop" className="text-[18px]" />
+                  {Math.round(d.precipProb)}%
+                </span>
+              )}
+              <span className="flex items-center gap-0.5">
+                <Icon name="rainy" className="text-[18px]" />
+                {nl1(d.precip)}mm
+              </span>
+            </span>
+          )}
+        </div>
+
+        {/* Wind: pijl in de stroomrichting + Beaufort */}
+        <div className="w-11 shrink-0 flex flex-col items-center text-on-surface-variant leading-none">
+          <Icon
+            name="navigation"
+            filled
+            className="text-[20px]"
+            style={{ transform: `rotate(${d.windDir + 180}deg)` }}
+          />
+          <span className="text-[12px] mt-0.5">{d.windBft} Bft</span>
+        </div>
       </button>
     </li>
   );

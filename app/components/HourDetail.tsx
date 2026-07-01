@@ -105,12 +105,12 @@ function HourRow({ h, rowRef }: { h: HourForecast; rowRef?: Ref<HTMLLIElement> }
   return (
     <li
       ref={rowRef}
-      className="flex items-center gap-2 px-3 py-1.5 border-b border-outline-variant"
+      className="flex items-center gap-2.5 px-3 py-1.5 border-b border-outline-variant"
     >
       {/* Tijdvak: begin (gedempt) boven eind (fel) */}
-      <div className="w-14 shrink-0 leading-none">
-        <div className="text-[11px] text-on-surface-variant">{hh(h.hour)} -</div>
-        <div className="text-[13px] font-bold text-primary mt-0.5">
+      <div className="w-16 shrink-0 leading-none">
+        <div className="text-[14px] text-on-surface-variant">{hh(h.hour)} -</div>
+        <div className="text-[17px] font-bold text-primary mt-0.5">
           {hh((h.hour + 1) % 24)}
         </div>
       </div>
@@ -119,32 +119,32 @@ function HourRow({ h, rowRef }: { h: HourForecast; rowRef?: Ref<HTMLLIElement> }
       <Icon
         name={cond.icon}
         filled={cond.filled}
-        className={`text-[26px] shrink-0 ${cond.iconColor}`}
+        className={`text-[38px] shrink-0 ${cond.iconColor}`}
       />
 
       {/* Temperatuur */}
-      <div className="w-10 shrink-0 text-right font-headline-sm text-[15px]">
+      <div className="w-11 shrink-0 text-right font-headline-sm text-[22px]">
         {Math.round(h.temp)}°
       </div>
 
       {/* Zon-minuten (enkel overdag) + (enkel bij neerslag) kans/mm */}
-      <div className="flex-grow min-w-0 pl-1 flex flex-col gap-0.5 text-[11px] text-on-surface-variant leading-none">
+      <div className="flex-grow min-w-0 pl-1 flex flex-col gap-1 text-[15px] text-on-surface-variant leading-none">
         {h.isDay && (
           <span className="flex items-center gap-1">
-            <Icon name="sunny" filled className="text-[13px] text-secondary" />
+            <Icon name="sunny" filled className="text-[18px] text-secondary" />
             {h.sunMinutes} min
           </span>
         )}
         {hasRain && (
-          <span className="flex items-center gap-2">
+          <span className="flex items-center gap-2.5">
             {h.precipProb > 0 && (
               <span className="flex items-center gap-0.5">
-                <Icon name="water_drop" className="text-[13px]" />
+                <Icon name="water_drop" className="text-[18px]" />
                 {Math.round(h.precipProb)}%
               </span>
             )}
             <span className="flex items-center gap-0.5">
-              <Icon name="rainy" className="text-[13px]" />
+              <Icon name="rainy" className="text-[18px]" />
               {nl1(h.precip)}mm
             </span>
           </span>
@@ -152,14 +152,14 @@ function HourRow({ h, rowRef }: { h: HourForecast; rowRef?: Ref<HTMLLIElement> }
       </div>
 
       {/* Wind: pijl in de stroomrichting + Beaufort */}
-      <div className="w-9 shrink-0 flex flex-col items-center text-on-surface-variant leading-none">
+      <div className="w-11 shrink-0 flex flex-col items-center text-on-surface-variant leading-none">
         <Icon
           name="navigation"
           filled
-          className="text-[15px]"
+          className="text-[20px]"
           style={{ transform: `rotate(${h.windDir + 180}deg)` }}
         />
-        <span className="text-[10px] mt-0.5">{h.windBft} Bft</span>
+        <span className="text-[12px] mt-0.5">{h.windBft} Bft</span>
       </div>
     </li>
   );
