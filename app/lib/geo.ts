@@ -26,6 +26,26 @@ export async function geocode(query: string): Promise<GeocodeResult | null> {
   };
 }
 
+/**
+ * Zet coördinaten om naar een plaatsnaam (reverse geocoding via BigDataCloud —
+ * gratis, geen sleutel, CORS-vriendelijk). Geeft null als er niets bruikbaars is.
+ */
+export async function reverseGeocode(
+  lat: number,
+  lon: number,
+): Promise<string | null> {
+  const url =
+    `https://api.bigdatacloud.net/data/reverse-geocode-client?` +
+    `latitude=${lat}&longitude=${lon}&localityLanguage=nl`;
+
+  const res = await fetch(url);
+  if (!res.ok) return null;
+
+  const d = await res.json();
+  const place = d.city || d.locality || d.principalSubdivision;
+  return place || null;
+}
+
 /** Afstand in kilometer tussen twee punten (Haversine). */
 export function distanceKm(a: LatLon, b: LatLon): number {
   const R = 6371;
