@@ -13,9 +13,12 @@ import {
 import { Icon } from "./Icon";
 import {
   conditionFromCurrent,
+  conditionFromDay,
   fetchCurrent,
   fetchCurrents,
+  fetchDailies,
   type CurrentWeather,
+  type DayLite,
   type WeatherCondition,
 } from "../lib/weather";
 import { type City } from "../lib/cities";
@@ -23,7 +26,9 @@ import { distanceKm } from "../lib/geo";
 import { weatherGlyphSvg } from "../lib/weatherGlyphs";
 
 type Coords = { lat: number; lon: number };
-type NearbyPlace = { city: City; cur: CurrentWeather };
+type NearbyPlace = { city: City; cur: CurrentWeather; days: DayLite[] };
+/** Stap op de tijdlijn: 'now' = huidig weer, of een dag-index (0 = vandaag). */
+type Step = "now" | number;
 
 /**
  * Zoekgebied als rechthoek in smartphone-verhouding (portret): meer noord-zuid
@@ -35,6 +40,15 @@ const HALF_EW_KM = 65; // halve breedte (oost-west)
 const MAX_NEARBY = 26;
 /** Minimale afstand (px) tussen twee getoonde iconen, om overlap te vermijden. */
 const MIN_PX = 40;
+/** Aantal dagen in de tijdlijn (naast 'Nu'). */
+const TIMELINE_DAYS = 14;
+
+const fmtWeekday = (iso: string) =>
+  new Date(iso).toLocaleDateString("nl-BE", { weekday: "short" });
+const fmtDayMonth = (iso: string) => {
+  const d = new Date(iso);
+  return `${d.getDate()}/${d.getMonth() + 1}`;
+};
 
 const ACCENT = "#9d3d22";
 
@@ -105,9 +119,8 @@ function currentIcon(cond: WeatherCondition, temp: number) {
 }
 
 /** Marker voor een plaats: enkel weericoon + temperatuur, gekleurd naar kwaliteit. */
-function nearbyIcon(cur: CurrentWeather) {
-  const cond = conditionFromCurrent(cur);
-  const color = wxIconColor(cur.code);
+function placeIcon(cond: WeatherCondition, code: number, temp: number) {
+  const color = wxIconColor(code);
   const iconHtml =
     weatherGlyphSvg(cond.icon, 26, color) ??
     `<span style="font-family:'Material Symbols Outlined';font-size:24px;` +
@@ -117,10 +130,18 @@ function nearbyIcon(cur: CurrentWeather) {
     html:
       `<div style="display:flex;flex-direction:column;align-items:center;gap:0px">` +
       iconHtml +
-      `<span style="${TEMP_CENTER}font-size:13px;color:${color}">${Math.round(cur.temp)}°</span></div>`,
+      `<span style="${TEMP_CENTER}font-size:13px;color:${color}">${Math.round(temp)}°</span></div>`,
     iconSize: [42, 42],
     iconAnchor: [21, 21],
   });
+}
+
+/** Marker-icoon voor een plaats op de gekozen tijdlijn-stap (nu of een dag). */
+function iconForPlace(place: NearbyPlace, step: Step) {
+  if (step === "now")
+    return placeIcon(conditionFromCurrent(place.cur), place.cur.code, place.cur.temp);
+  const d = place.days[step];
+  return d ? placeIcon(conditionFromDay(d), d.code, d.tMax) : null;
 }
 
 /**
@@ -160,7 +181,9 @@ function MapEngine({
   onLoading: (loading: boolean) => void;
 }) {
   const map = useMap();
-  const cache = useRef<Map<string, CurrentWeather>>(new Map());
+  const cache = useRef<Map<string, { cur: CurrentWeather; days: DayLite[] }>>(
+    new Map(),
+  );
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const reqId = useRef(0);
 
@@ -185,11 +208,21 @@ function MapEngine({
 
       const missing = thinned.filter((c) => !cache.current.has(c.id));
       if (missing.length > 0) {
-        const currents = await fetchCurrents(missing);
-        missing.forEach((c, i) => cache.current.set(c.id, currents[i]));
+        const [currents, dailies] = await Promise.all([
+          fetchCurrents(missing),
+          fetchDailies(missing, TIMELINE_DAYS),
+        ]);
+        missing.forEach((c, i) =>
+          cache.current.set(c.id, { cur: currents[i], days: dailies[i] }),
+        );
       }
       if (id !== reqId.current) return; // ondertussen opnieuw geladen
-      onLoaded(thinned.map((c) => ({ city: c, cur: cache.current.get(c.id)! })));
+      onLoaded(
+        thinned.map((c) => {
+          const e = cache.current.get(c.id)!;
+          return { city: c, cur: e.cur, days: e.days };
+        }),
+      );
     } catch {
       // Bijladen is optioneel; stil falen.
     } finally {
@@ -249,22 +282,63 @@ export default function LiveMap({
   onSelect: (place: { name: string; lat: number; lon: number }) => void;
 }) {
   const [cur, setCur] = useState<CurrentWeather | null>(null);
+  const [centerDays, setCenterDays] = useState<DayLite[]>([]);
   const [nearby, setNearby] = useState<NearbyPlace[]>([]);
   const [loading, setLoading] = useState(false);
+  // Tijdlijn: 'now' of een dag-index; playing = automatisch doorlopen.
+  const [step, setStep] = useState<Step>("now");
+  const [playing, setPlaying] = useState(false);
 
-  // Actueel weer op de eigen locatie ophalen.
+  // Actueel weer + meerdaagse verwachting op de eigen locatie ophalen.
   useEffect(() => {
     let active = true;
     setCur(null);
-    fetchCurrent(center)
-      .then((c) => active && setCur(c))
+    setCenterDays([]);
+    Promise.all([fetchCurrent(center), fetchDailies([center], TIMELINE_DAYS)])
+      .then(([c, dd]) => {
+        if (!active) return;
+        setCur(c);
+        setCenterDays(dd[0] ?? []);
+      })
       .catch(() => {});
     return () => {
       active = false;
     };
   }, [center]);
 
+  // Nieuw middelpunt → terug naar 'nu' en stoppen met afspelen.
+  useEffect(() => {
+    setStep("now");
+    setPlaying(false);
+  }, [center]);
+
+  const dayCount = centerDays.length;
+
+  // Afspelen: elke ~1,1s naar de volgende stap (nu → vandaag → … → nu).
+  useEffect(() => {
+    if (!playing || dayCount === 0) return;
+    const id = setInterval(() => {
+      setStep((prev) =>
+        prev === "now" ? 0 : prev + 1 >= dayCount ? "now" : prev + 1,
+      );
+    }, 1100);
+    return () => clearInterval(id);
+  }, [playing, dayCount]);
+
+  const selectStep = (s: Step) => {
+    setStep(s);
+    setPlaying(false);
+  };
+
   const cond = cur ? conditionFromCurrent(cur) : null;
+  const ownIcon =
+    step === "now"
+      ? cond && cur
+        ? currentIcon(cond, cur.temp)
+        : null
+      : centerDays[step]
+        ? currentIcon(conditionFromDay(centerDays[step]), centerDays[step].tMax)
+        : null;
 
   return (
     <div className="absolute inset-0">
@@ -288,29 +362,35 @@ export default function LiveMap({
         {/* Plaatsen in beeld met hun actuele weer. De stad die met het
             middelpunt samenvalt laten we weg — anders staat er een dubbel
             icoon achter de eigen-locatie-marker. */}
+        {/* Plaatsen in beeld; de stad die met het middelpunt samenvalt weglaten
+            (anders staat er een dubbel icoon achter de eigen-locatie-marker). */}
         {nearby
           .filter(({ city }) => distanceKm(center, city) > 2)
-          .map(({ city, cur: c }) => (
-            <Marker
-              key={city.id}
-              position={[city.lat, city.lon]}
-              icon={nearbyIcon(c)}
-              eventHandlers={{
-                click: () =>
-                  onSelect({
-                    name: city.name,
-                    lat: city.lat,
-                    lon: city.lon,
-                  }),
-              }}
-            />
-          ))}
+          .map((place) => {
+            const icon = iconForPlace(place, step);
+            if (!icon) return null;
+            return (
+              <Marker
+                key={place.city.id}
+                position={[place.city.lat, place.city.lon]}
+                icon={icon}
+                eventHandlers={{
+                  click: () =>
+                    onSelect({
+                      name: place.city.name,
+                      lat: place.city.lat,
+                      lon: place.city.lon,
+                    }),
+                }}
+              />
+            );
+          })}
 
-        {/* Eigen locatie bovenop, altijd zichtbaar. */}
-        {cond && cur && (
+        {/* Eigen locatie bovenop. */}
+        {ownIcon && (
           <Marker
             position={[center.lat, center.lon]}
-            icon={currentIcon(cond, cur.temp)}
+            icon={ownIcon}
             zIndexOffset={1000}
             eventHandlers={{
               click: () =>
@@ -325,11 +405,89 @@ export default function LiveMap({
       </MapContainer>
 
       {loading && (
-        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-1.5 rounded-full bg-surface/95 border border-outline-variant px-3 py-1 stamp-shadow font-label-sm text-label-sm text-on-surface-variant">
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-1.5 rounded-full bg-surface/95 border border-outline-variant px-3 py-1 stamp-shadow font-label-sm text-label-sm text-on-surface-variant">
           <Icon name="progress_activity" className="text-base animate-spin" />
           Weer laden…
         </div>
       )}
+
+      <Timeline
+        days={centerDays}
+        step={step}
+        onStep={selectStep}
+        playing={playing}
+        onTogglePlay={() => setPlaying((p) => !p)}
+      />
     </div>
+  );
+}
+
+/** Tijdlijn onderaan de kaart: ▶-afspeelknop + strook dagen (Nu, vandaag, …). */
+function Timeline({
+  days,
+  step,
+  onStep,
+  playing,
+  onTogglePlay,
+}: {
+  days: DayLite[];
+  step: Step;
+  onStep: (s: Step) => void;
+  playing: boolean;
+  onTogglePlay: () => void;
+}) {
+  return (
+    <div className="absolute bottom-0 left-0 right-0 z-[1000] bg-surface/95 backdrop-blur-sm border-t border-outline-variant">
+      <div className="flex items-center gap-1.5 p-1.5">
+        <button
+          onClick={onTogglePlay}
+          disabled={days.length === 0}
+          aria-label={playing ? "Pauzeer" : "Speel af"}
+          className="shrink-0 w-11 h-11 rounded-full bg-primary text-on-primary flex items-center justify-center active-press disabled:opacity-50"
+        >
+          <Icon name={playing ? "pause" : "play_arrow"} filled className="text-[24px]" />
+        </button>
+        <div className="flex-grow overflow-x-auto no-scrollbar flex gap-1">
+          <Chip active={step === "now"} onClick={() => onStep("now")} label="Nu" sub="" />
+          {days.map((d, i) => (
+            <Chip
+              key={d.date}
+              active={step === i}
+              onClick={() => onStep(i)}
+              label={i === 0 ? "Vandaag" : fmtWeekday(d.date)}
+              sub={fmtDayMonth(d.date)}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Chip({
+  active,
+  onClick,
+  label,
+  sub,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  sub: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`shrink-0 min-w-[52px] px-2 py-1 rounded-lg text-center leading-none active-press transition-colors ${
+        active
+          ? "bg-primary text-on-primary"
+          : "bg-surface-container-high text-on-surface-variant"
+      }`}
+    >
+      <div className="font-headline-sm text-[13px] uppercase capitalize">
+        {label}
+      </div>
+      <div className="text-[10px] mt-0.5 h-3">{sub}</div>
+    </button>
   );
 }

@@ -133,6 +133,32 @@ async function fetchForecasts(
   return results.flat();
 }
 
+/** Lichte dagverwachting per plaats, voor de kaart-tijdlijn (icoon + max-temp). */
+export type DayLite = {
+  date: string;
+  tMax: number;
+  precip: number;
+  sunFraction: number;
+  code: number;
+};
+
+/** Meerdaagse dagverwachting (lite) voor meerdere plaatsen, gebatcht. */
+export async function fetchDailies(
+  points: LatLon[],
+  days: number,
+): Promise<DayLite[][]> {
+  const forecasts = await fetchForecasts(points, days);
+  return forecasts.map((f) =>
+    f.map((d) => ({
+      date: d.date,
+      tMax: d.tMax,
+      precip: d.precip,
+      sunFraction: d.sunFraction,
+      code: d.code,
+    })),
+  );
+}
+
 /**
  * Haalt het uur-voor-uur weer op voor één stad en één dag. Wordt pas
  * aangeroepen als de gebruiker een dag uitklapt, dus niet voor alle steden.
