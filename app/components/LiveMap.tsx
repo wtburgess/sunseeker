@@ -447,14 +447,14 @@ function Timeline({
         >
           <Icon name={playing ? "pause" : "play_arrow"} filled className="text-[24px]" />
         </button>
-        <div className="flex-grow overflow-x-auto no-scrollbar flex gap-1">
+        <div className="flex-grow overflow-x-auto no-scrollbar flex gap-0.5">
           <Chip active={step === "now"} onClick={() => onStep("now")} label="Nu" sub="" />
           {days.map((d, i) => (
             <Chip
               key={d.date}
               active={step === i}
               onClick={() => onStep(i)}
-              label={i === 0 ? "Vandaag" : fmtWeekday(d.date)}
+              label={fmtWeekday(d.date)}
               sub={fmtDayMonth(d.date)}
             />
           ))}
@@ -478,13 +478,13 @@ function Chip({
   return (
     <button
       onClick={onClick}
-      className={`shrink-0 min-w-[52px] px-2 py-1 rounded-lg text-center leading-none active-press transition-colors ${
+      className={`shrink-0 min-w-[34px] px-1 py-1 rounded-md text-center leading-none active-press transition-colors ${
         active
           ? "bg-primary text-on-primary"
           : "bg-surface-container-high text-on-surface-variant"
       }`}
     >
-      <div className="font-headline-sm text-[13px] uppercase capitalize">
+      <div className="font-headline-sm text-[12px] uppercase capitalize">
         {label}
       </div>
       <div className="text-[10px] mt-0.5 h-3">{sub}</div>
