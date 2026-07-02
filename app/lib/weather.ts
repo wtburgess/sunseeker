@@ -286,7 +286,7 @@ export function conditionFromCode(code: number): WeatherCondition {
       icon: "sky_0",
       filled: true,
       patch: PATCH.sun,
-      iconColor: "text-secondary",
+      iconColor: "text-[#e0962b]",
     };
   if (code === 1)
     return {
@@ -294,7 +294,7 @@ export function conditionFromCode(code: number): WeatherCondition {
       icon: "sky_1",
       filled: true,
       patch: PATCH.sun,
-      iconColor: "text-secondary",
+      iconColor: "text-[#e0962b]",
     };
   if (code === 2)
     return {
@@ -302,7 +302,7 @@ export function conditionFromCode(code: number): WeatherCondition {
       icon: "sky_2",
       filled: true,
       patch: PATCH.partly,
-      iconColor: "text-secondary",
+      iconColor: "text-[#e0962b]",
     };
   if (code === 3)
     return {
@@ -310,7 +310,7 @@ export function conditionFromCode(code: number): WeatherCondition {
       icon: "sky_3",
       filled: true,
       patch: PATCH.cloud,
-      iconColor: "text-outline",
+      iconColor: "text-[#9aa6ac]",
     };
   if (code <= 48)
     return {
@@ -318,7 +318,7 @@ export function conditionFromCode(code: number): WeatherCondition {
       icon: "foggy",
       filled: true,
       patch: PATCH.cloud,
-      iconColor: "text-outline",
+      iconColor: "text-[#9aa6ac]",
     };
   if (code <= 57)
     return {
@@ -326,7 +326,7 @@ export function conditionFromCode(code: number): WeatherCondition {
       icon: "rainy",
       filled: true,
       patch: PATCH.rain,
-      iconColor: "text-tertiary",
+      iconColor: "text-[#7f97a8]",
     };
   if (code <= 67)
     return {
@@ -334,7 +334,7 @@ export function conditionFromCode(code: number): WeatherCondition {
       icon: "rainy",
       filled: true,
       patch: PATCH.rain,
-      iconColor: "text-tertiary",
+      iconColor: "text-[#7f97a8]",
     };
   if (code <= 77)
     return {
@@ -342,7 +342,7 @@ export function conditionFromCode(code: number): WeatherCondition {
       icon: "weather_snowy",
       filled: true,
       patch: PATCH.snow,
-      iconColor: "text-tertiary",
+      iconColor: "text-[#93b4c6]",
     };
   if (code <= 82)
     return {
@@ -350,7 +350,7 @@ export function conditionFromCode(code: number): WeatherCondition {
       icon: "rainy",
       filled: true,
       patch: PATCH.rain,
-      iconColor: "text-tertiary",
+      iconColor: "text-[#7f97a8]",
     };
   if (code <= 86)
     return {
@@ -358,7 +358,7 @@ export function conditionFromCode(code: number): WeatherCondition {
       icon: "weather_snowy",
       filled: true,
       patch: PATCH.snow,
-      iconColor: "text-tertiary",
+      iconColor: "text-[#93b4c6]",
     };
   return {
     label: "Onweer",
@@ -466,7 +466,7 @@ export function conditionFromHourDayNight(hour: HourForecast): WeatherCondition 
     icon: clear ? "moon" : "moon_cloud",
     filled: true,
     patch: clear ? PATCH.cloud : PATCH.partly,
-    iconColor: "text-outline",
+    iconColor: "text-[#8a97a8]",
   };
 }
 

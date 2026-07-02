@@ -83,9 +83,9 @@ function minPopForZoom(z: number): number {
  * oogopslag waar het beter weer is — ook zonder achtergrond achter het icoon.
  */
 function wxIconColor(code: number): string {
-  if (code <= 1) return "#d98000"; // zon
-  if (code <= 48) return "#6b5b54"; // bewolkt/mist
-  return "#44524a"; // nat/winters
+  if (code <= 1) return "#e0962b"; // zon (warm amber)
+  if (code <= 48) return "#737b80"; // bewolkt/mist (fris neutraal grijs)
+  return "#566d78"; // nat/winters (rustig blauwgrijs)
 }
 
 /**
