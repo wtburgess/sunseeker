@@ -53,18 +53,17 @@ export function CityDetail({
   return (
     <div className="absolute inset-0 z-[1200] bg-surface flex flex-col animate-fade-in">
       {/* Kop */}
-      <div className="flex items-center gap-2 px-3 h-14 shrink-0 border-b-2 border-outline-variant">
-        <Icon name="near_me" className="text-primary text-[20px]" />
+      <div className="flex items-center gap-1 px-3 h-14 shrink-0 border-b-2 border-outline-variant">
+        <button
+          onClick={onClose}
+          aria-label="Terug naar kaart"
+          className="w-10 h-10 -ml-2 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
+        >
+          <Icon name="arrow_back" className="text-[24px]" />
+        </button>
         <h2 className="flex-grow font-headline-md text-headline-md uppercase tracking-wide truncate">
           {place.name}
         </h2>
-        <button
-          onClick={onClose}
-          aria-label="Sluiten"
-          className="w-10 h-10 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
-        >
-          <Icon name="close" className="text-[22px]" />
-        </button>
       </div>
 
       {/* Lijst per dag */}
@@ -170,6 +169,9 @@ function DayRow({
           />
           <span className="text-[12px] mt-0.5">{d.windBft} Bft</span>
         </div>
+
+        {/* Verder-pijltje: klik door naar de uur-lijst. */}
+        <Icon name="chevron_right" className="text-[26px] shrink-0 -mr-1 text-outline" />
       </button>
     </li>
   );
