@@ -2,7 +2,7 @@
 
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type Ref } from "react";
 import {
   MapContainer,
   Marker,
@@ -41,7 +41,7 @@ const MAX_NEARBY = 26;
 /** Minimale afstand (px) tussen twee getoonde iconen, om overlap te vermijden. */
 const MIN_PX = 40;
 /** Aantal dagen in de tijdlijn (naast 'Nu'). */
-const TIMELINE_DAYS = 14;
+const TIMELINE_DAYS = 7;
 
 const fmtWeekday = (iso: string) =>
   new Date(iso).toLocaleDateString("nl-BE", { weekday: "short" });
@@ -436,6 +436,16 @@ function Timeline({
   playing: boolean;
   onTogglePlay: () => void;
 }) {
+  // Actieve chip in beeld houden (mee-scrollen als hij buiten beeld valt).
+  const activeRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({
+      inline: "center",
+      block: "nearest",
+      behavior: "smooth",
+    });
+  }, [step]);
+
   return (
     <div className="absolute bottom-0 left-0 right-0 z-[1000] bg-surface/95 backdrop-blur-sm border-t border-outline-variant">
       <div className="flex items-center gap-1.5 p-1.5">
@@ -448,11 +458,18 @@ function Timeline({
           <Icon name={playing ? "pause" : "play_arrow"} filled className="text-[24px]" />
         </button>
         <div className="flex-grow overflow-x-auto no-scrollbar flex gap-0.5">
-          <Chip active={step === "now"} onClick={() => onStep("now")} label="Nu" sub="" />
+          <Chip
+            active={step === "now"}
+            innerRef={step === "now" ? activeRef : undefined}
+            onClick={() => onStep("now")}
+            label="Nu"
+            sub=""
+          />
           {days.map((d, i) => (
             <Chip
               key={d.date}
               active={step === i}
+              innerRef={step === i ? activeRef : undefined}
               onClick={() => onStep(i)}
               label={fmtWeekday(d.date)}
               sub={fmtDayMonth(d.date)}
@@ -466,28 +483,31 @@ function Timeline({
 
 function Chip({
   active,
+  innerRef,
   onClick,
   label,
   sub,
 }: {
   active: boolean;
+  innerRef?: Ref<HTMLButtonElement>;
   onClick: () => void;
   label: string;
   sub: string;
 }) {
   return (
     <button
+      ref={innerRef}
       onClick={onClick}
-      className={`shrink-0 min-w-[34px] px-1 py-1 rounded-md text-center leading-none active-press transition-colors ${
+      className={`shrink-0 min-w-[38px] px-1 py-1 rounded-md text-center leading-none active-press transition-colors ${
         active
           ? "bg-primary text-on-primary"
           : "bg-surface-container-high text-on-surface-variant"
       }`}
     >
-      <div className="font-headline-sm text-[12px] uppercase capitalize">
+      <div className="font-headline-sm text-[16px] uppercase capitalize">
         {label}
       </div>
-      <div className="text-[10px] mt-0.5 h-3">{sub}</div>
+      <div className="text-[12px] mt-0.5 h-3.5">{sub}</div>
     </button>
   );
 }
