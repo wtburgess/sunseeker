@@ -41,7 +41,7 @@ const MAX_NEARBY = 26;
 /** Minimale afstand (px) tussen twee getoonde iconen, om overlap te vermijden. */
 const MIN_PX = 40;
 /** Aantal dagen in de tijdlijn (naast 'Nu'). */
-const TIMELINE_DAYS = 7;
+const TIMELINE_DAYS = 10;
 
 const fmtWeekday = (iso: string) =>
   new Date(iso).toLocaleDateString("nl-BE", { weekday: "short" });
@@ -318,8 +318,9 @@ export default function LiveMap({
   useEffect(() => {
     if (!playing || dayCount === 0) return;
     const id = setInterval(() => {
+      // Nu → dag 0 → … → laatste → terug naar dag 0 (niet naar 'Nu').
       setStep((prev) =>
-        prev === "now" ? 0 : prev + 1 >= dayCount ? "now" : prev + 1,
+        prev === "now" ? 0 : prev + 1 >= dayCount ? 0 : prev + 1,
       );
     }, 1100);
     return () => clearInterval(id);
