@@ -39,7 +39,7 @@ const HALF_EW_KM = 65; // halve breedte (oost-west)
 /** Max. aantal plaatsen tegelijk op de kaart (overzicht houden op een telefoon). */
 const MAX_NEARBY = 26;
 /** Minimale afstand (px) tussen twee getoonde iconen, om overlap te vermijden. */
-const MIN_PX = 40;
+const MIN_PX = 56;
 /** Aantal dagen in de tijdlijn (naast 'Nu'). */
 const TIMELINE_DAYS = 10;
 
@@ -100,21 +100,21 @@ const TEMP_CENTER =
 /** Marker op de huidige locatie: weericoon + temperatuur in een accent-cirkel. */
 function currentIcon(cond: WeatherCondition, temp: number) {
   const iconHtml =
-    weatherGlyphSvg(cond.icon, 22, ACCENT) ??
-    `<span style="font-family:'Material Symbols Outlined';font-size:20px;` +
+    weatherGlyphSvg(cond.icon, 32, ACCENT) ??
+    `<span style="font-family:'Material Symbols Outlined';font-size:30px;` +
       `font-variation-settings:'FILL' 1;line-height:1;color:${ACCENT}">${cond.icon}</span>`;
   return L.divIcon({
     className: "",
     html:
       // Enkel een accent-ring rond het icoon; geen achtergrond, zodat de
       // onderliggende stad zichtbaar blijft. Icoon + temperatuur zonder schaduw.
-      `<div style="width:46px;height:46px;border-radius:50%;display:flex;` +
+      `<div style="width:62px;height:62px;border-radius:50%;display:flex;` +
       `flex-direction:column;align-items:center;justify-content:center;gap:0px;` +
       `border:3px solid ${ACCENT}">` +
       iconHtml +
-      `<span style="${TEMP_CENTER}font-size:12px;color:${ACCENT}">${Math.round(temp)}°</span></div>`,
-    iconSize: [46, 46],
-    iconAnchor: [23, 23],
+      `<span style="${TEMP_CENTER}font-size:17px;color:${ACCENT}">${Math.round(temp)}°</span></div>`,
+    iconSize: [62, 62],
+    iconAnchor: [31, 31],
   });
 }
 
@@ -122,17 +122,17 @@ function currentIcon(cond: WeatherCondition, temp: number) {
 function placeIcon(cond: WeatherCondition, code: number, temp: number) {
   const color = wxIconColor(code);
   const iconHtml =
-    weatherGlyphSvg(cond.icon, 26, color) ??
-    `<span style="font-family:'Material Symbols Outlined';font-size:24px;` +
+    weatherGlyphSvg(cond.icon, 38, color) ??
+    `<span style="font-family:'Material Symbols Outlined';font-size:34px;` +
       `font-variation-settings:'FILL' 1;line-height:1;color:${color}">${cond.icon}</span>`;
   return L.divIcon({
     className: "",
     html:
       `<div style="display:flex;flex-direction:column;align-items:center;gap:0px">` +
       iconHtml +
-      `<span style="${TEMP_CENTER}font-size:13px;color:${color}">${Math.round(temp)}°</span></div>`,
-    iconSize: [42, 42],
-    iconAnchor: [21, 21],
+      `<span style="${TEMP_CENTER}font-size:19px;color:${color}">${Math.round(temp)}°</span></div>`,
+    iconSize: [52, 60],
+    iconAnchor: [26, 30],
   });
 }
 
