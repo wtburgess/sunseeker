@@ -98,21 +98,29 @@ const TEMP_CENTER =
   "font-family:'Archivo Narrow',sans-serif;font-weight:700;line-height:1;";
 
 /** Marker op de huidige locatie: weericoon + temperatuur in een accent-cirkel. */
-function currentIcon(cond: WeatherCondition, temp: number) {
+function currentIcon(cond: WeatherCondition, temp: number, struck = false) {
   const iconHtml =
     weatherGlyphSvg(cond.icon, 32, ACCENT) ??
     `<span style="font-family:'Material Symbols Outlined';font-size:30px;` +
       `font-variation-settings:'FILL' 1;line-height:1;color:${ACCENT}">${cond.icon}</span>`;
+  // Schuine streep als de eigen locatie niet aan het filter voldoet (blijft in
+  // de accent-kleur — dus niet grijs, wél doorgestreept).
+  const slash = struck
+    ? `<svg width="62" height="62" viewBox="0 0 62 62" style="position:absolute;top:0;left:0;pointer-events:none">` +
+      `<line x1="12" y1="50" x2="50" y2="12" stroke="${ACCENT}" stroke-width="5" stroke-linecap="round"/></svg>`
+    : "";
   return L.divIcon({
     className: "",
     html:
       // Enkel een accent-ring rond het icoon; geen achtergrond, zodat de
       // onderliggende stad zichtbaar blijft. Icoon + temperatuur zonder schaduw.
-      `<div style="width:62px;height:62px;border-radius:50%;display:flex;` +
+      `<div style="position:relative;width:62px;height:62px;border-radius:50%;display:flex;` +
       `flex-direction:column;align-items:center;justify-content:center;gap:0px;` +
       `border:3px solid ${ACCENT}">` +
       iconHtml +
-      `<span style="${TEMP_CENTER}font-size:17px;color:${ACCENT}">${Math.round(temp)}°</span></div>`,
+      `<span style="${TEMP_CENTER}font-size:17px;color:${ACCENT}">${Math.round(temp)}°</span>` +
+      slash +
+      `</div>`,
     iconSize: [62, 62],
     iconAnchor: [31, 31],
   });
@@ -374,14 +382,23 @@ export default function LiveMap({
       d.sunHours >= minSun &&
       d.precip <= effMaxRain);
 
+  // De eigen locatie volgt óók het filter, maar wordt niet grijs — enkel
+  // doorgestreept als hij niet voldoet.
+  const ownDay = step === "now" ? centerDays[0] : centerDays[step];
+  const ownStruck = filterActive && !passesFilter(ownDay);
+
   const cond = cur ? conditionFromCurrent(cur) : null;
   const ownIcon =
     step === "now"
       ? cond && cur
-        ? currentIcon(cond, cur.temp)
+        ? currentIcon(cond, cur.temp, ownStruck)
         : null
       : centerDays[step]
-        ? currentIcon(conditionFromDay(centerDays[step]), centerDays[step].tMax)
+        ? currentIcon(
+            conditionFromDay(centerDays[step]),
+            centerDays[step].tMax,
+            ownStruck,
+          )
         : null;
 
   return (
