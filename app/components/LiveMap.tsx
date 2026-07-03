@@ -119,19 +119,31 @@ function currentIcon(cond: WeatherCondition, temp: number) {
 }
 
 /** Marker voor een plaats: enkel weericoon + temperatuur, gekleurd naar kwaliteit. */
-function placeIcon(cond: WeatherCondition, color: string, temp: number) {
+function placeIcon(
+  cond: WeatherCondition,
+  color: string,
+  temp: number,
+  struck = false,
+) {
   const iconHtml =
     weatherGlyphSvg(cond.icon, 38, color) ??
     `<span style="font-family:'Material Symbols Outlined';font-size:34px;` +
       `font-variation-settings:'FILL' 1;line-height:1;color:${color}">${cond.icon}</span>`;
+  // Schuine streep over plaatsen die niet aan het filter voldoen.
+  const slash = struck
+    ? `<svg width="44" height="42" viewBox="0 0 44 42" style="position:absolute;top:-1px;left:0;pointer-events:none">` +
+      `<line x1="8" y1="36" x2="36" y2="6" stroke="#8b9195" stroke-width="5" stroke-linecap="round"/></svg>`
+    : "";
   return L.divIcon({
     className: "",
     html:
-      `<div style="display:flex;flex-direction:column;align-items:center;gap:0px">` +
+      `<div style="position:relative;width:44px;display:flex;flex-direction:column;align-items:center;gap:0px">` +
       iconHtml +
-      `<span style="${TEMP_CENTER}font-size:19px;color:${color}">${Math.round(temp)}°</span></div>`,
-    iconSize: [52, 60],
-    iconAnchor: [26, 30],
+      `<span style="${TEMP_CENTER}font-size:19px;color:${color}">${Math.round(temp)}°</span>` +
+      slash +
+      `</div>`,
+    iconSize: [44, 60],
+    iconAnchor: [22, 30],
   });
 }
 
@@ -155,7 +167,7 @@ function iconForPlace(place: NearbyPlace, step: Step, dimmed: boolean) {
     code = d.code;
     temp = d.tMax;
   }
-  return placeIcon(cond, dimmed ? DIM_COLOR : wxIconColor(code), temp);
+  return placeIcon(cond, dimmed ? DIM_COLOR : wxIconColor(code), temp, dimmed);
 }
 
 /**
@@ -596,18 +608,29 @@ function FilterPanel({
   setMaxRain: (v: number) => void;
   onClose: () => void;
 }) {
+  const reset = () => {
+    setMinTemp(0);
+    setMaxTemp(40);
+    setMinSun(0);
+    setMaxRain(15);
+  };
   return (
     <div className="absolute inset-x-0 bottom-0 z-[1100] bg-surface border-t-2 border-outline-variant rounded-t-2xl stamp-shadow max-h-[80%] overflow-y-auto animate-fade-in">
-      <div className="sticky top-0 z-10 flex items-center justify-between px-4 h-12 bg-surface border-b border-outline-variant">
-        <span className="font-headline-md text-headline-md uppercase tracking-wide flex items-center gap-2">
-          <Icon name="tune" filled className="text-primary text-[22px]" /> Filter
+      <div className="sticky top-0 z-10 flex items-center justify-between px-3 h-14 bg-surface border-b-2 border-outline-variant">
+        <button
+          onClick={reset}
+          className="px-3 py-1.5 rounded-lg font-headline-sm text-[16px] uppercase text-primary hover:bg-surface-container-high active-press"
+        >
+          Reset
+        </button>
+        <span className="font-headline-md text-headline-md uppercase tracking-wide flex items-center gap-1.5">
+          <Icon name="tune" filled className="text-primary text-[24px]" /> Filter
         </span>
         <button
           onClick={onClose}
-          aria-label="Sluiten"
-          className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
+          className="px-5 py-1.5 rounded-lg bg-primary text-on-primary font-headline-sm text-[16px] uppercase active-press"
         >
-          <Icon name="close" className="text-[22px]" />
+          OK
         </button>
       </div>
 
@@ -664,7 +687,7 @@ function FilterPanel({
 
 function GroupLabel({ children }: { children: string }) {
   return (
-    <div className="px-4 pt-3 pb-1 font-label-sm text-label-sm uppercase tracking-widest text-outline">
+    <div className="px-4 pt-3 pb-1 font-headline-sm text-[15px] uppercase tracking-widest text-outline">
       {children}
     </div>
   );
@@ -691,10 +714,10 @@ function FilterRow({
 }) {
   const [showInfo, setShowInfo] = useState(false);
   return (
-    <div className="px-4 py-1.5">
+    <div className="px-4 py-2">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1 min-w-0">
-          <span className="font-headline-sm text-[15px] uppercase truncate">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <span className="font-headline-sm text-[19px] uppercase truncate">
             {title}
           </span>
           <button
@@ -705,15 +728,15 @@ function FilterRow({
               showInfo ? "text-primary" : "text-outline hover:text-primary"
             }`}
           >
-            <Icon name="info" filled={showInfo} className="text-[18px]" />
+            <Icon name="info" filled={showInfo} className="text-[22px]" />
           </button>
         </div>
-        <span className="font-headline-sm text-[17px] text-primary shrink-0">
+        <span className="font-headline-sm text-[22px] text-primary shrink-0">
           {display}
         </span>
       </div>
       {showInfo && (
-        <p className="text-[12px] leading-snug text-on-surface-variant mt-1">
+        <p className="text-[14px] leading-snug text-on-surface-variant mt-1">
           {info}
         </p>
       )}
@@ -724,7 +747,7 @@ function FilterRow({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="mt-1"
+        className="mt-1.5"
       />
     </div>
   );
