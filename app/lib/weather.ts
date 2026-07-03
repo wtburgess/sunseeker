@@ -133,11 +133,12 @@ async function fetchForecasts(
   return results.flat();
 }
 
-/** Lichte dagverwachting per plaats, voor de kaart-tijdlijn (icoon + max-temp). */
+/** Lichte dagverwachting per plaats, voor de kaart-tijdlijn en het filter. */
 export type DayLite = {
   date: string;
   tMax: number;
-  precip: number;
+  precip: number; // mm over de hele dag
+  sunHours: number; // zonuren
   sunFraction: number;
   code: number;
 };
@@ -153,6 +154,7 @@ export async function fetchDailies(
       date: d.date,
       tMax: d.tMax,
       precip: d.precip,
+      sunHours: d.sunHours,
       sunFraction: d.sunFraction,
       code: d.code,
     })),

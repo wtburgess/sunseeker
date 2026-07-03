@@ -119,8 +119,7 @@ function currentIcon(cond: WeatherCondition, temp: number) {
 }
 
 /** Marker voor een plaats: enkel weericoon + temperatuur, gekleurd naar kwaliteit. */
-function placeIcon(cond: WeatherCondition, code: number, temp: number) {
-  const color = wxIconColor(code);
+function placeIcon(cond: WeatherCondition, color: string, temp: number) {
   const iconHtml =
     weatherGlyphSvg(cond.icon, 38, color) ??
     `<span style="font-family:'Material Symbols Outlined';font-size:34px;` +
@@ -136,12 +135,27 @@ function placeIcon(cond: WeatherCondition, code: number, temp: number) {
   });
 }
 
-/** Marker-icoon voor een plaats op de gekozen tijdlijn-stap (nu of een dag). */
-function iconForPlace(place: NearbyPlace, step: Step) {
-  if (step === "now")
-    return placeIcon(conditionFromCurrent(place.cur), place.cur.code, place.cur.temp);
-  const d = place.days[step];
-  return d ? placeIcon(conditionFromDay(d), d.code, d.tMax) : null;
+/** Lichtgrijze kleur voor plaatsen die niet aan het filter voldoen. */
+const DIM_COLOR = "#c4c8cb";
+
+/** Marker-icoon voor een plaats op de gekozen tijdlijn-stap (nu of een dag).
+ *  Voldoet de plaats niet aan het filter, dan tonen we hem lichtgrijs. */
+function iconForPlace(place: NearbyPlace, step: Step, dimmed: boolean) {
+  let cond: WeatherCondition;
+  let code: number;
+  let temp: number;
+  if (step === "now") {
+    cond = conditionFromCurrent(place.cur);
+    code = place.cur.code;
+    temp = place.cur.temp;
+  } else {
+    const d = place.days[step];
+    if (!d) return null;
+    cond = conditionFromDay(d);
+    code = d.code;
+    temp = d.tMax;
+  }
+  return placeIcon(cond, dimmed ? DIM_COLOR : wxIconColor(code), temp);
 }
 
 /**
@@ -288,6 +302,12 @@ export default function LiveMap({
   // Tijdlijn: 'now' of een dag-index; playing = automatisch doorlopen.
   const [step, setStep] = useState<Step>("now");
   const [playing, setPlaying] = useState(false);
+  // Filter (standaardwaarden = alles zichtbaar).
+  const [showFilter, setShowFilter] = useState(false);
+  const [minTemp, setMinTemp] = useState(0);
+  const [maxTemp, setMaxTemp] = useState(40);
+  const [minSun, setMinSun] = useState(0);
+  const [maxRain, setMaxRain] = useState(15);
 
   // Actueel weer + meerdaagse verwachting op de eigen locatie ophalen.
   useEffect(() => {
@@ -331,6 +351,17 @@ export default function LiveMap({
     setPlaying(false);
   };
 
+  // Filter: max-regen op zijn hoogste stand = geen limiet.
+  const effMaxRain = maxRain >= 15 ? Infinity : maxRain;
+  const filterActive =
+    minTemp > 0 || maxTemp < 40 || minSun > 0 || maxRain < 15;
+  const passesFilter = (d: DayLite | undefined) =>
+    !d ||
+    (d.tMax >= minTemp &&
+      d.tMax <= maxTemp &&
+      d.sunHours >= minSun &&
+      d.precip <= effMaxRain);
+
   const cond = cur ? conditionFromCurrent(cur) : null;
   const ownIcon =
     step === "now"
@@ -368,13 +399,16 @@ export default function LiveMap({
         {nearby
           .filter(({ city }) => distanceKm(center, city) > 2)
           .map((place) => {
-            const icon = iconForPlace(place, step);
+            const day = step === "now" ? place.days[0] : place.days[step];
+            const dimmed = filterActive && !passesFilter(day);
+            const icon = iconForPlace(place, step, dimmed);
             if (!icon) return null;
             return (
               <Marker
                 key={place.city.id}
                 position={[place.city.lat, place.city.lon]}
                 icon={icon}
+                zIndexOffset={dimmed ? -100 : 0}
                 eventHandlers={{
                   click: () =>
                     onSelect({
@@ -404,6 +438,33 @@ export default function LiveMap({
           />
         )}
       </MapContainer>
+
+      {/* Filterknop rechtsboven. */}
+      <button
+        onClick={() => setShowFilter((v) => !v)}
+        aria-label="Filter"
+        className={`absolute top-3 right-3 z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
+          filterActive
+            ? "bg-primary text-on-primary"
+            : "bg-surface text-primary border-2 border-outline-variant"
+        }`}
+      >
+        <Icon name="tune" filled className="text-[24px]" />
+      </button>
+
+      {showFilter && (
+        <FilterPanel
+          minTemp={minTemp}
+          setMinTemp={setMinTemp}
+          maxTemp={maxTemp}
+          setMaxTemp={setMaxTemp}
+          minSun={minSun}
+          setMinSun={setMinSun}
+          maxRain={maxRain}
+          setMaxRain={setMaxRain}
+          onClose={() => setShowFilter(false)}
+        />
+      )}
 
       {loading && (
         <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-1.5 rounded-full bg-surface/95 border border-outline-variant px-3 py-1 stamp-shadow font-label-sm text-label-sm text-on-surface-variant">
@@ -510,5 +571,161 @@ function Chip({
       </div>
       <div className="text-[12px] mt-0.5 h-3.5">{sub}</div>
     </button>
+  );
+}
+
+/** Filterpaneel (bottom sheet). Wijzigingen werken de kaart meteen bij. */
+function FilterPanel({
+  minTemp,
+  setMinTemp,
+  maxTemp,
+  setMaxTemp,
+  minSun,
+  setMinSun,
+  maxRain,
+  setMaxRain,
+  onClose,
+}: {
+  minTemp: number;
+  setMinTemp: (v: number) => void;
+  maxTemp: number;
+  setMaxTemp: (v: number) => void;
+  minSun: number;
+  setMinSun: (v: number) => void;
+  maxRain: number;
+  setMaxRain: (v: number) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div className="absolute inset-x-0 bottom-0 z-[1100] bg-surface border-t-2 border-outline-variant rounded-t-2xl stamp-shadow max-h-[80%] overflow-y-auto animate-fade-in">
+      <div className="sticky top-0 z-10 flex items-center justify-between px-4 h-12 bg-surface border-b border-outline-variant">
+        <span className="font-headline-md text-headline-md uppercase tracking-wide flex items-center gap-2">
+          <Icon name="tune" filled className="text-primary text-[22px]" /> Filter
+        </span>
+        <button
+          onClick={onClose}
+          aria-label="Sluiten"
+          className="w-9 h-9 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
+        >
+          <Icon name="close" className="text-[22px]" />
+        </button>
+      </div>
+
+      <div className="pb-4">
+        <GroupLabel>Temperatuur</GroupLabel>
+        <FilterRow
+          title="Minimum"
+          info="De laagste maximumtemperatuur van de dag. Plaatsen waar het overdag kouder blijft dan dit, vervagen."
+          display={`${minTemp}°`}
+          value={minTemp}
+          min={0}
+          max={40}
+          step={1}
+          onChange={setMinTemp}
+        />
+        <FilterRow
+          title="Maximum"
+          info="De hoogste maximumtemperatuur van de dag. Plaatsen waar het overdag warmer wordt dan dit, vervagen."
+          display={maxTemp >= 40 ? "40°+" : `${maxTemp}°`}
+          value={maxTemp}
+          min={0}
+          max={40}
+          step={1}
+          onChange={setMaxTemp}
+        />
+
+        <GroupLabel>Zon</GroupLabel>
+        <FilterRow
+          title="Min. zonuren"
+          info="Aantal uren zon per dag. Vanaf 8 zonuren heb je een goeie dag."
+          display={`${minSun} u`}
+          value={minSun}
+          min={0}
+          max={14}
+          step={1}
+          onChange={setMinSun}
+        />
+
+        <GroupLabel>Regen</GroupLabel>
+        <FilterRow
+          title="Max. regen"
+          info="Totale regen over de hele dag. 0 mm = droog · 1–2 mm = een spatje · 5 mm+ = echt nat. Plaatsen met méér regen vervagen."
+          display={maxRain >= 15 ? "alles" : `${maxRain} mm`}
+          value={maxRain}
+          min={0}
+          max={15}
+          step={1}
+          onChange={setMaxRain}
+        />
+      </div>
+    </div>
+  );
+}
+
+function GroupLabel({ children }: { children: string }) {
+  return (
+    <div className="px-4 pt-3 pb-1 font-label-sm text-label-sm uppercase tracking-widest text-outline">
+      {children}
+    </div>
+  );
+}
+
+function FilterRow({
+  title,
+  info,
+  display,
+  value,
+  min,
+  max,
+  step,
+  onChange,
+}: {
+  title: string;
+  info: string;
+  display: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  onChange: (v: number) => void;
+}) {
+  const [showInfo, setShowInfo] = useState(false);
+  return (
+    <div className="px-4 py-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1 min-w-0">
+          <span className="font-headline-sm text-[15px] uppercase truncate">
+            {title}
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowInfo((v) => !v)}
+            aria-label="Uitleg"
+            className={`shrink-0 active-press ${
+              showInfo ? "text-primary" : "text-outline hover:text-primary"
+            }`}
+          >
+            <Icon name="info" filled={showInfo} className="text-[18px]" />
+          </button>
+        </div>
+        <span className="font-headline-sm text-[17px] text-primary shrink-0">
+          {display}
+        </span>
+      </div>
+      {showInfo && (
+        <p className="text-[12px] leading-snug text-on-surface-variant mt-1">
+          {info}
+        </p>
+      )}
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="mt-1"
+      />
+    </div>
   );
 }
