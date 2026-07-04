@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { TopAppBar } from "./components/TopAppBar";
 import { LocationBar } from "./components/LocationBar";
 import { CityDetail } from "./components/CityDetail";
+import { Legend } from "./components/Legend";
 import { geocode, reverseGeocode } from "./lib/geo";
 
 export type Coords = { lat: number; lon: number };
@@ -33,6 +34,7 @@ export default function Home() {
     lat: number;
     lon: number;
   } | null>(null);
+  const [showLegend, setShowLegend] = useState(false);
 
   // Locatie van pc/smartphone inlezen: kaart centreren én de plaatsnaam in het
   // invulveld tonen (net alsof je hem had ingetypt en op Enter gedrukt).
@@ -88,8 +90,8 @@ export default function Home() {
     <div className="h-dvh w-full flex items-center justify-center md:p-6">
       {/* Smartphone-kader: op desktop een beperkt telefoon-venster i.p.v.
           schermvullend; op mobiel gewoon het volledige scherm. */}
-      <div className="flex flex-col w-full h-full bg-surface overflow-hidden md:w-[400px] md:h-[min(820px,calc(100dvh_-_3rem))] md:rounded-[2rem] md:border-2 md:border-outline-variant md:shadow-2xl">
-        <TopAppBar />
+      <div className="relative flex flex-col w-full h-full bg-surface overflow-hidden md:w-[400px] md:h-[min(820px,calc(100dvh_-_3rem))] md:rounded-[2rem] md:border-2 md:border-outline-variant md:shadow-2xl">
+        <TopAppBar onInfo={() => setShowLegend(true)} />
         {/* Alles onder de titel; het detailoverzicht overdekt straks ook de
             zoekbalk (start net onder de hoofdtitel). */}
         <div className="relative flex-grow min-h-0 flex flex-col">
@@ -119,6 +121,7 @@ export default function Home() {
             <CityDetail place={selected} onClose={() => setSelected(null)} />
           )}
         </div>
+        {showLegend && <Legend onClose={() => setShowLegend(false)} />}
       </div>
     </div>
   );
