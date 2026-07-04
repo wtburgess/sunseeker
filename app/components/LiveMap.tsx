@@ -78,14 +78,18 @@ function minPopForZoom(z: number): number {
 }
 
 /**
- * Kleur van een plaats-icoon naar weerkwaliteit: goud = zonnig/goed weer,
- * bruin = bewolkt/mist, koel grijsgroen = regen/sneeuw/onweer. Zo zie je in één
- * oogopslag waar het beter weer is — ook zonder achtergrond achter het icoon.
+ * Kleur van een plaats-icoon, afgeleid van het GEKOZEN weericoon (niet van de
+ * ruwe WMO-code). Zo krijgt een zon-glyph altijd de warme goud-kleur en een
+ * wolk altijd grijs — nooit meer een "grijze zon" doordat kleur en vorm uit
+ * verschillende bronnen kwamen. Goud = zonnig, grijs = bewolkt, blauwgrijs = nat.
  */
-function wxIconColor(code: number): string {
-  if (code <= 1) return "#e0962b"; // zon (warm amber)
-  if (code <= 48) return "#737b80"; // bewolkt/mist (fris neutraal grijs)
-  return "#566d78"; // nat/winters (rustig blauwgrijs)
+function wxColorForIcon(icon: string): string {
+  if (icon.startsWith("sky")) return icon === "sky_3" ? "#737b80" : "#e0962b";
+  if (icon.startsWith("rain")) return "#566d78"; // regen
+  if (icon.startsWith("moon")) return "#8a97a8"; // nacht
+  if (icon === "weather_snowy") return "#7f93a0"; // sneeuw
+  if (icon === "storm") return "#b3402a"; // onweer
+  return "#737b80"; // mist / bewolkt / overig
 }
 
 /**
@@ -162,20 +166,17 @@ const DIM_COLOR = "#c4c8cb";
  *  Voldoet de plaats niet aan het filter, dan tonen we hem lichtgrijs. */
 function iconForPlace(place: NearbyPlace, step: Step, dimmed: boolean) {
   let cond: WeatherCondition;
-  let code: number;
   let temp: number;
   if (step === "now") {
     cond = conditionFromCurrent(place.cur);
-    code = place.cur.code;
     temp = place.cur.temp;
   } else {
     const d = place.days[step];
     if (!d) return null;
     cond = conditionFromDay(d);
-    code = d.code;
     temp = d.tMax;
   }
-  return placeIcon(cond, dimmed ? DIM_COLOR : wxIconColor(code), temp, dimmed);
+  return placeIcon(cond, dimmed ? DIM_COLOR : wxColorForIcon(cond.icon), temp, dimmed);
 }
 
 /**
