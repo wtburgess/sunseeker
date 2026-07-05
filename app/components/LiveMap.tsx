@@ -78,21 +78,6 @@ function minPopForZoom(z: number): number {
 }
 
 /**
- * Kleur van een plaats-icoon, afgeleid van het GEKOZEN weericoon (niet van de
- * ruwe WMO-code). Zo krijgt een zon-glyph altijd de warme goud-kleur en een
- * wolk altijd grijs — nooit meer een "grijze zon" doordat kleur en vorm uit
- * verschillende bronnen kwamen. Goud = zonnig, grijs = bewolkt, blauwgrijs = nat.
- */
-function wxColorForIcon(icon: string): string {
-  if (icon.startsWith("sky")) return icon === "sky_3" ? "#737b80" : "#e0962b";
-  if (icon.startsWith("rain")) return "#566d78"; // regen
-  if (icon.startsWith("moon")) return "#8a97a8"; // nacht
-  if (icon === "weather_snowy") return "#7f93a0"; // sneeuw
-  if (icon === "storm") return "#b3402a"; // onweer
-  return "#737b80"; // mist / bewolkt / overig
-}
-
-/**
  * Gedeelde stijl om de temperatuur onder elk icoon op dezelfde manier optisch te
  * centreren: full-width + gecentreerd, met een kleine padding-left die de breedte
  * van het °-teken compenseert (anders staan de cijfers net te links).
@@ -130,28 +115,27 @@ function currentIcon(cond: WeatherCondition, temp: number, struck = false) {
   });
 }
 
-/** Marker voor een plaats: enkel weericoon + temperatuur, gekleurd naar kwaliteit. */
-function placeIcon(
-  cond: WeatherCondition,
-  color: string,
-  temp: number,
-  struck = false,
-) {
+/**
+ * Marker voor een plaats: meerkleurig weericoon + temperatuur. De glyph draagt
+ * zijn eigen kleuren; voldoet de plaats niet aan het filter, dan vervagen we het
+ * hele icoon met een grijs-filter en een schuine streep.
+ */
+function placeIcon(cond: WeatherCondition, temp: number, dimmed: boolean) {
   const iconHtml =
-    weatherGlyphSvg(cond.icon, 38, color) ??
+    weatherGlyphSvg(cond.icon, 38, "") ??
     `<span style="font-family:'Material Symbols Outlined';font-size:34px;` +
-      `font-variation-settings:'FILL' 1;line-height:1;color:${color}">${cond.icon}</span>`;
-  // Schuine streep over plaatsen die niet aan het filter voldoen.
-  const slash = struck
+      `font-variation-settings:'FILL' 1;line-height:1;color:#6b7075">${cond.icon}</span>`;
+  const dimCss = dimmed ? "filter:grayscale(1) opacity(0.5);" : "";
+  const slash = dimmed
     ? `<svg width="44" height="42" viewBox="0 0 44 42" style="position:absolute;top:-1px;left:0;pointer-events:none">` +
-      `<line x1="8" y1="36" x2="36" y2="6" stroke="#8b9195" stroke-width="5" stroke-linecap="round"/></svg>`
+      `<line x1="8" y1="36" x2="36" y2="6" stroke="#6b7075" stroke-width="5" stroke-linecap="round"/></svg>`
     : "";
   return L.divIcon({
     className: "",
     html:
-      `<div style="position:relative;width:44px;display:flex;flex-direction:column;align-items:center;gap:0px">` +
+      `<div style="position:relative;width:44px;display:flex;flex-direction:column;align-items:center;gap:0px;${dimCss}">` +
       iconHtml +
-      `<span style="${TEMP_CENTER}font-size:19px;color:${color}">${Math.round(temp)}°</span>` +
+      `<span style="${TEMP_CENTER}font-size:19px;color:#3d3d3d">${Math.round(temp)}°</span>` +
       slash +
       `</div>`,
     iconSize: [44, 60],
@@ -159,11 +143,7 @@ function placeIcon(
   });
 }
 
-/** Lichtgrijze kleur voor plaatsen die niet aan het filter voldoen. */
-const DIM_COLOR = "#c4c8cb";
-
-/** Marker-icoon voor een plaats op de gekozen tijdlijn-stap (nu of een dag).
- *  Voldoet de plaats niet aan het filter, dan tonen we hem lichtgrijs. */
+/** Marker-icoon voor een plaats op de gekozen tijdlijn-stap (nu of een dag). */
 function iconForPlace(place: NearbyPlace, step: Step, dimmed: boolean) {
   let cond: WeatherCondition;
   let temp: number;
@@ -176,7 +156,7 @@ function iconForPlace(place: NearbyPlace, step: Step, dimmed: boolean) {
     cond = conditionFromDay(d);
     temp = d.tMax;
   }
-  return placeIcon(cond, dimmed ? DIM_COLOR : wxColorForIcon(cond.icon), temp, dimmed);
+  return placeIcon(cond, temp, dimmed);
 }
 
 /**

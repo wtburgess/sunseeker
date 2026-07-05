@@ -281,195 +281,142 @@ const PATCH = {
   storm: "bg-error-container border-error text-error",
 };
 
-export function conditionFromCode(code: number): WeatherCondition {
-  if (code === 0)
-    return {
-      label: "Onbewolkt",
-      icon: "sky_0",
-      filled: true,
-      patch: PATCH.sun,
-      iconColor: "text-[#e0962b]",
-    };
-  if (code === 1)
-    return {
-      label: "Overwegend zonnig",
-      icon: "sky_1",
-      filled: true,
-      patch: PATCH.sun,
-      iconColor: "text-[#e0962b]",
-    };
-  if (code === 2)
-    return {
-      label: "Half bewolkt",
-      icon: "sky_2",
-      filled: true,
-      patch: PATCH.partly,
-      iconColor: "text-[#e0962b]",
-    };
-  if (code === 3)
-    return {
-      label: "Bewolkt",
-      icon: "sky_3",
-      filled: true,
-      patch: PATCH.cloud,
-      iconColor: "text-[#9aa6ac]",
-    };
-  if (code <= 48)
-    return {
-      label: "Mist",
-      icon: "foggy",
-      filled: true,
-      patch: PATCH.cloud,
-      iconColor: "text-[#9aa6ac]",
-    };
-  if (code <= 57)
-    return {
-      label: "Motregen",
-      icon: "rainy",
-      filled: true,
-      patch: PATCH.rain,
-      iconColor: "text-[#7f97a8]",
-    };
-  if (code <= 67)
-    return {
-      label: "Regen",
-      icon: "rainy",
-      filled: true,
-      patch: PATCH.rain,
-      iconColor: "text-[#7f97a8]",
-    };
-  if (code <= 77)
-    return {
-      label: "Sneeuw",
-      icon: "weather_snowy",
-      filled: true,
-      patch: PATCH.snow,
-      iconColor: "text-[#93b4c6]",
-    };
-  if (code <= 82)
-    return {
-      label: "Buien",
-      icon: "rainy",
-      filled: true,
-      patch: PATCH.rain,
-      iconColor: "text-[#7f97a8]",
-    };
-  if (code <= 86)
-    return {
-      label: "Sneeuwbuien",
-      icon: "weather_snowy",
-      filled: true,
-      patch: PATCH.snow,
-      iconColor: "text-[#93b4c6]",
-    };
-  return {
-    label: "Onweer",
-    icon: "storm",
-    filled: true,
-    patch: PATCH.storm,
-    iconColor: "text-error",
-  };
+/** Korte helper: label + icoon (kleur zit in de meerkleurige glyph zelf). */
+const cond = (label: string, icon: string): WeatherCondition => ({
+  label,
+  icon,
+  filled: true,
+  patch: PATCH.cloud,
+  iconColor: "",
+});
+
+/** Sneeuw-intensiteit uit de WMO-code (71 licht, 73 matig, 75 zwaar, 77 korrels). */
+function snowByCode(code: number): WeatherCondition {
+  if (code === 75) return cond("Zware sneeuw", "snow_3");
+  if (code === 73) return cond("Matige sneeuw", "snow_2");
+  return cond("Lichte sneeuw", "snow_1");
 }
 
-/** Goudgele tint voor (bijna) volle zon. */
-const SUN_GOLD = "text-[#f5a623]";
-
-/** WMO-codes die regen/motregen/buien zijn (geen sneeuw of onweer). */
-const isRainCode = (c: number) =>
-  (c >= 51 && c <= 67) || (c >= 80 && c <= 82);
+export function conditionFromCode(code: number): WeatherCondition {
+  if (code === 0) return cond("Onbewolkt", "sky_0");
+  if (code === 1) return cond("Overwegend zonnig", "sky_1");
+  if (code === 2) return cond("Half bewolkt", "sky_2");
+  if (code === 3) return cond("Bewolkt", "sky_3");
+  if (code <= 48) return cond("Mist", "foggy");
+  if (code <= 55) return cond("Motregen", "drizzle");
+  if (code <= 57) return cond("IJzel", "sleet"); // aanvriezende motregen
+  if (code <= 65) return cond("Regen", "rain_2");
+  if (code <= 67) return cond("IJzel", "sleet"); // aanvriezende regen
+  if (code <= 77) return snowByCode(code);
+  if (code <= 82) return cond("Buien", "showers");
+  if (code <= 86) return cond("Sneeuwbuien", "snow_showers");
+  if (code === 95) return cond("Onweer", "storm");
+  return cond("Onweer met hagel", "storm_hail"); // 96, 99
+}
 
 /**
- * Regenicoon naar intensiteit: meer neerslag → voller icoon (meer streepjes).
- * Dag-totalen lopen veel hoger op dan uur-waarden, dus de drempels verschillen:
- * een dag met 2 mm is "heel weinig", een uur met 2 mm is al een flinke bui.
+ * Regenicoon naar intensiteit: meer neerslag → voller icoon (meer druppels).
+ * Dag-totalen lopen veel hoger op dan uur-waarden, dus de drempels verschillen.
  */
 export function rainIcon(precipMm: number, scale: "day" | "hour"): string {
   const [light, heavy] = scale === "day" ? [2, 10] : [0.4, 2.5];
-  if (precipMm < light) return "rain_1"; // heel weinig: één streepje
-  if (precipMm < heavy) return "rain_2"; // matig: twee streepjes
-  return "rain_3"; // veel regen: drie streepjes
+  if (precipMm < light) return "rain_1";
+  if (precipMm < heavy) return "rain_2";
+  return "rain_3";
+}
+
+/** Regen-conditie met een label naar intensiteit. */
+function rainCond(precipMm: number, scale: "day" | "hour"): WeatherCondition {
+  const icon = rainIcon(precipMm, scale);
+  const label =
+    icon === "rain_1" ? "Lichte regen" : icon === "rain_2" ? "Matige regen" : "Veel regen";
+  return cond(label, icon);
 }
 
 /** Vanaf zoveel mm dag-neerslag telt het als een echte "natte dag". */
 const WET_DAY_MM = 1;
 
 /**
- * Conditie (label + icoon) voor één dag. De dagelijkse WMO-code is onbetrouwbaar
- * als headline: hij pakt het zwaarste moment van het etmaal, waardoor een korte
- * nachtbui een verder zonnige dag als "onweer" of "bewolkt" bestempelt. Daarom:
- * sneeuw is altijd leidend; bij noemenswaardige neerslag (≥ 1 mm) tonen we
- * onweer of regen-intensiteit; en bij een vrijwel droge dag bepaalt het werkelijke
- * zon-aandeel het beeld (volle zon wordt goudgeel). De uur-strip toont een korte
- * bui of onweer alsnog op het juiste uur.
+ * Conditie (label + icoon) voor één dag. Sneeuw is leidend; bij een natte dag
+ * (≥ 1 mm) tonen we het juiste neerslag-type (onweer/hagel, ijzel, motregen,
+ * buien of regen naar intensiteit); anders bepaalt het zon-aandeel het beeld.
  */
 export function conditionFromDay(day: {
   code: number;
   precip: number;
   sunFraction: number;
 }): WeatherCondition {
-  // Sneeuw blijft altijd leidend.
-  if ((day.code >= 71 && day.code <= 77) || (day.code >= 85 && day.code <= 86))
-    return conditionFromCode(day.code);
+  const c = day.code;
+  if (c >= 71 && c <= 77) return snowByCode(c);
+  if (c === 85 || c === 86) return cond("Sneeuwbuien", "snow_showers");
 
-  // Echte natte dag: onweer (code ≥ 95) of regen naar intensiteit.
   if (day.precip >= WET_DAY_MM) {
-    if (day.code >= 95) return conditionFromCode(day.code); // onweer
-    const base = conditionFromCode(isRainCode(day.code) ? day.code : 63);
-    return { ...base, icon: rainIcon(day.precip, "day") };
+    if (c === 96 || c === 99) return cond("Onweer met hagel", "storm_hail");
+    if (c === 95) return cond("Onweer", "storm");
+    if (c === 56 || c === 57 || c === 66 || c === 67) return cond("IJzel", "sleet");
+    if (c >= 51 && c <= 55) return cond("Motregen", "drizzle");
+    if (c >= 80 && c <= 82) {
+      if (day.sunFraction >= 0.5) return cond("Zonnige bui", "sun_shower");
+      if (day.sunFraction >= 0.3) return cond("Buien", "showers");
+    }
+    return rainCond(day.precip, "day");
   }
 
-  // Vrijwel droog: het zon-aandeel bepaalt het beeld.
-  if (day.sunFraction >= 0.85)
-    return { ...conditionFromCode(0), iconColor: SUN_GOLD }; // volle zon
-  if (day.sunFraction >= 0.6) return conditionFromCode(1); // Overwegend zonnig
-  if (day.sunFraction >= 0.35) return conditionFromCode(2); // Half bewolkt
-
-  // Weinig zon en toch droog: mist (indien zo gecodeerd) of bewolkt.
-  if (day.code === 45 || day.code === 48) return conditionFromCode(day.code);
-  return conditionFromCode(3); // Bewolkt
+  if (day.sunFraction >= 0.85) return cond("Onbewolkt", "sky_0");
+  if (day.sunFraction >= 0.6) return cond("Overwegend zonnig", "sky_1");
+  if (day.sunFraction >= 0.35) return cond("Half bewolkt", "sky_2");
+  if (c === 45 || c === 48) return cond("Mist", "foggy");
+  return cond("Bewolkt", "sky_3");
 }
 
 /**
- * Conditie voor één uur. Per-uur WMO-code is betrouwbaar, dus die is leidend;
- * regen schaalt met de neerslag van dat uur en een zonnig uur wordt goudgeel.
+ * Conditie voor één uur (overdag). Per-uur WMO-code is betrouwbaar en leidend;
+ * regen schaalt met de neerslag van dat uur.
  */
 export function conditionFromHour(hour: {
   code: number;
   precip: number;
   sunMinutes: number;
 }): WeatherCondition {
-  if (hour.code >= 45) {
-    const base = conditionFromCode(hour.code);
-    return isRainCode(hour.code)
-      ? { ...base, icon: rainIcon(hour.precip, "hour") }
-      : base;
+  const c = hour.code;
+  if (c >= 45) {
+    if (c === 45 || c === 48) return cond("Mist", "foggy");
+    if (c === 96 || c === 99) return cond("Onweer met hagel", "storm_hail");
+    if (c === 95) return cond("Onweer", "storm");
+    if (c === 56 || c === 57 || c === 66 || c === 67) return cond("IJzel", "sleet");
+    if (c >= 51 && c <= 55) return cond("Motregen", "drizzle");
+    if (c >= 71 && c <= 77) return snowByCode(c);
+    if (c === 85 || c === 86) return cond("Sneeuwbuien", "snow_showers");
+    if (c >= 80 && c <= 82)
+      return hour.sunMinutes >= 20
+        ? cond("Zonnige bui", "sun_shower")
+        : cond("Buien", "showers");
+    return rainCond(hour.precip, "hour");
   }
-  if (hour.sunMinutes >= 50)
-    return { ...conditionFromCode(0), iconColor: SUN_GOLD }; // bijna vol zon
-  if (hour.sunMinutes >= 30) return conditionFromCode(1); // Overwegend zonnig
-  if (hour.sunMinutes >= 10) return conditionFromCode(2); // Half bewolkt
-  return conditionFromCode(3); // Bewolkt
+  if (hour.sunMinutes >= 50) return cond("Onbewolkt", "sky_0");
+  if (hour.sunMinutes >= 30) return cond("Overwegend zonnig", "sky_1");
+  if (hour.sunMinutes >= 10) return cond("Half bewolkt", "sky_2");
+  return cond("Bewolkt", "sky_3");
 }
 
 /**
- * Zoals conditionFromHour, maar met dag/nacht: 's nachts tonen we maan-iconen
- * (op basis van de bewolking) i.p.v. een zonnetje. Neerslag/onweer/sneeuw blijven
- * dag én nacht dezelfde iconen.
+ * Zoals conditionFromHour, maar met dag/nacht: 's nachts tonen we maan-varianten
+ * (helder, half bewolkt, bewolkt) en maan-met-neerslag (regen/onweer/sneeuw).
  */
 export function conditionFromHourDayNight(hour: HourForecast): WeatherCondition {
-  // Neerslag/onweer/sneeuw: dag én nacht dezelfde iconen. Overdag: zon-logica.
-  if (hour.code >= 45 || hour.isDay) return conditionFromHour(hour);
+  if (hour.isDay) return conditionFromHour(hour);
 
-  // Nacht en droog: altijd een maan (helder of maan-met-wolk), nooit een kale
-  // dag-wolk, zodat de nacht duidelijk als nacht leesbaar is.
-  const clear = hour.cloud < 40;
-  return {
-    label: clear ? "Heldere nacht" : "Bewolkte nacht",
-    icon: clear ? "moon" : "moon_cloud",
-    filled: true,
-    patch: clear ? PATCH.cloud : PATCH.partly,
-    iconColor: "text-[#8a97a8]",
-  };
+  const c = hour.code;
+  if (c >= 45) {
+    if (c === 45 || c === 48) return cond("Mist", "foggy");
+    if (c >= 95) return cond("Onweer 's nachts", "moon_storm");
+    if ((c >= 71 && c <= 77) || c === 85 || c === 86)
+      return cond("Sneeuw 's nachts", "moon_snow");
+    return cond("Regen 's nachts", "moon_rain");
+  }
+  if (hour.cloud < 30) return cond("Heldere nacht", "moon");
+  if (hour.cloud < 70) return cond("Half bewolkte nacht", "moon_partly");
+  return cond("Bewolkte nacht", "moon_cloud");
 }
 
 /* ── Actueel weer (nu) ─────────────────────────────────────────────────── */
@@ -478,13 +425,14 @@ export type CurrentWeather = {
   code: number; // WMO
   temp: number; // °C
   precip: number; // mm (laatste uur)
+  isDay: boolean; // daglicht of nacht
 };
 
 /** Haalt het weer-op-dit-moment op voor één punt (Open-Meteo `current`). */
 export async function fetchCurrent(point: LatLon): Promise<CurrentWeather> {
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
-    `&current=temperature_2m,precipitation,weather_code&timezone=auto`;
+    `&current=temperature_2m,precipitation,weather_code,is_day&timezone=auto`;
 
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Open-Meteo gaf status ${res.status}`);
@@ -495,6 +443,7 @@ export async function fetchCurrent(point: LatLon): Promise<CurrentWeather> {
     code: c.weather_code ?? 0,
     temp: c.temperature_2m ?? 0,
     precip: c.precipitation ?? 0,
+    isDay: (c.is_day ?? 1) === 1,
   };
 }
 
@@ -504,7 +453,7 @@ async function fetchCurrentChunk(points: LatLon[]): Promise<CurrentWeather[]> {
   const lon = points.map((p) => p.lon).join(",");
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-    `&current=temperature_2m,precipitation,weather_code&timezone=auto`;
+    `&current=temperature_2m,precipitation,weather_code,is_day&timezone=auto`;
 
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Open-Meteo gaf status ${res.status}`);
@@ -517,6 +466,7 @@ async function fetchCurrentChunk(points: LatLon[]): Promise<CurrentWeather[]> {
       code: c.weather_code ?? 0,
       temp: c.temperature_2m ?? 0,
       precip: c.precipitation ?? 0,
+      isDay: (c.is_day ?? 1) === 1,
     };
   });
 }
@@ -539,12 +489,21 @@ export async function fetchCurrents(
  * betrouwbaar en dus leidend; bij regen schaalt het icoon met de neerslag.
  */
 export function conditionFromCurrent(cur: CurrentWeather): WeatherCondition {
-  if ((cur.code >= 71 && cur.code <= 77) || (cur.code >= 85 && cur.code <= 86))
-    return conditionFromCode(cur.code); // sneeuw
-  if (cur.code >= 95) return conditionFromCode(cur.code); // onweer
-  if (isRainCode(cur.code))
-    return { ...conditionFromCode(cur.code), icon: rainIcon(cur.precip, "hour") };
-  return conditionFromCode(cur.code);
+  const c = cur.code;
+  if (!cur.isDay) {
+    // 's Nachts: maan-varianten.
+    if (c === 45 || c === 48) return cond("Mist", "foggy");
+    if (c >= 95) return cond("Onweer", "moon_storm");
+    if ((c >= 71 && c <= 77) || c === 85 || c === 86)
+      return cond("Sneeuw", "moon_snow");
+    if (c >= 51) return cond("Regen", "moon_rain");
+    if (c === 0 || c === 1) return cond("Heldere nacht", "moon");
+    if (c === 2) return cond("Half bewolkte nacht", "moon_partly");
+    return cond("Bewolkte nacht", "moon_cloud");
+  }
+  // Overdag: regen schaalt met de actuele neerslag, de rest volgt de code.
+  if (c >= 61 && c <= 65) return rainCond(cur.precip, "hour");
+  return conditionFromCode(c);
 }
 
 /* ── Dag-detail (meerdaagse voorspelling voor één plaats) ──────────────── */
