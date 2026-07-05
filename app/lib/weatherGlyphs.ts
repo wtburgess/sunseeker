@@ -49,6 +49,29 @@ const SMALLCLOUD =
   `<g fill="${CLOUD}"><circle cx="22" cy="27" r="6.5"/><circle cx="35" cy="27" r="6.5"/>` +
   `<circle cx="28" cy="21" r="7.5"/><rect x="16" y="25" width="25" height="8" rx="4"/></g>`;
 
+/**
+ * Maan achter een wolk met een smalle transparante opening ertussen. Maan en
+ * wolk hebben bijna dezelfde grijsblauwe tint, dus waar de wolk de maan overlapt
+ * verdwijnt de rand. We maskeren daarom een iets vergrote wolk-silhouet (via een
+ * zwarte rand-stroke) uit de maan weg; daar valt de achtergrond doorheen als een
+ * dun gaatje. De echte wolk vult vervolgens de kern, zodat beide vormen los van
+ * elkaar leesbaar blijven op elke ondergrond. `cloudShapes` zijn de kale vormen
+ * (zonder fill-wrapper), zodat mask en wolk exact dezelfde silhouet delen.
+ */
+const moonBehindCloud = (id: string, moonStr: string, cloudShapes: string) =>
+  `<defs><mask id="${id}" maskUnits="userSpaceOnUse" x="0" y="0" width="48" height="48">` +
+  `<rect width="48" height="48" fill="white"/>` +
+  `<g stroke="black" stroke-width="3.5" stroke-linejoin="round">${cloudShapes}</g>` +
+  `</mask></defs>` +
+  `<g mask="url(#${id})">${moonStr}</g>` +
+  `<g fill="${CLOUD}">${cloudShapes}</g>`;
+
+/** Kale wolk-vormen (zonder fill) voor de nacht-neerslag-iconen; net hoog genoeg
+ *  dat er onder de wolk ruimte overblijft voor druppels, vlokken of bliksem. */
+const NIGHT_CLOUD =
+  `<circle cx="24" cy="28" r="6.5"/><circle cx="37" cy="28" r="6.5"/>` +
+  `<circle cx="30" cy="22" r="7.5"/><rect x="18" y="26" width="25" height="8" rx="4"/>`;
+
 export const WEATHER_GLYPHS: Record<string, Glyph> = {
   sky_0: {
     viewBox: VB,
@@ -104,8 +127,11 @@ export const WEATHER_GLYPHS: Record<string, Glyph> = {
   showers: {
     viewBox: VB,
     body:
-      `<g stroke="${SUN}" stroke-width="2.4" stroke-linecap="round"><line x1="15" y1="3" x2="15" y2="7"/><line x1="4" y1="15" x2="8" y2="15"/><line x1="7" y1="6" x2="9.5" y2="8.5"/></g>` +
-      `<circle cx="15" cy="15" r="6" fill="${SUN}"/>` +
+      `<circle cx="15" cy="15" r="8.5" fill="${SUN}"/>` +
+      `<g stroke="${SUN}" stroke-width="3" stroke-linecap="round">` +
+      `<line x1="15" y1="1" x2="15" y2="5"/><line x1="1" y1="15" x2="5" y2="15"/>` +
+      `<line x1="5.5" y1="5.5" x2="8.5" y2="8.5"/><line x1="24.5" y1="5.5" x2="21.5" y2="8.5"/>` +
+      `<line x1="5.5" y1="24.5" x2="8.5" y2="21.5"/></g>` +
       SMALLCLOUD +
       drop(21, 36) +
       drop(31, 36),
@@ -131,8 +157,11 @@ export const WEATHER_GLYPHS: Record<string, Glyph> = {
   snow_showers: {
     viewBox: VB,
     body:
-      `<g stroke="${SUN}" stroke-width="2.4" stroke-linecap="round"><line x1="15" y1="3" x2="15" y2="7"/><line x1="4" y1="15" x2="8" y2="15"/><line x1="7" y1="6" x2="9.5" y2="8.5"/></g>` +
-      `<circle cx="15" cy="15" r="6" fill="${SUN}"/>` +
+      `<circle cx="15" cy="15" r="8.5" fill="${SUN}"/>` +
+      `<g stroke="${SUN}" stroke-width="3" stroke-linecap="round">` +
+      `<line x1="15" y1="1" x2="15" y2="5"/><line x1="1" y1="15" x2="5" y2="15"/>` +
+      `<line x1="5.5" y1="5.5" x2="8.5" y2="8.5"/><line x1="24.5" y1="5.5" x2="21.5" y2="8.5"/>` +
+      `<line x1="5.5" y1="24.5" x2="8.5" y2="21.5"/></g>` +
       SMALLCLOUD +
       flake(22, 40, 3, 1.7) +
       flake(33, 40, 3, 1.7),
@@ -141,13 +170,13 @@ export const WEATHER_GLYPHS: Record<string, Glyph> = {
     viewBox: VB,
     body:
       RAINCLOUD_HI +
-      `<path d="M26 34 L19 44 L24 44 L22 48 L30 39 L25.5 39 Z" fill="${BOLT}"/>`,
+      `<path d="M27 31 L18 43 L24.5 43 L22 48 L32 37 L26.5 37 Z" fill="${BOLT}"/>`,
   },
   storm_hail: {
     viewBox: VB,
     body:
       RAINCLOUD_HI +
-      `<path d="M26 32 L19 42 L24 42 L22 46 L30 37 L25.5 37 Z" fill="${BOLT}"/>` +
+      `<path d="M26.8 29.5 L18.4 41 L24.4 41 L22 46 L31.6 35 L26.2 35 Z" fill="${BOLT}"/>` +
       `<circle cx="15" cy="42" r="2.2" fill="${HAIL}"/><circle cx="35" cy="42" r="2.2" fill="${HAIL}"/>`,
   },
   sun_shower: {
@@ -162,31 +191,39 @@ export const WEATHER_GLYPHS: Record<string, Glyph> = {
   moon: { viewBox: VB, body: moon(1, 1, 1.9) },
   moon_partly: {
     viewBox: VB,
-    body:
-      moon(-2, -2, 1.7) +
-      `<g fill="${CLOUD}"><circle cx="28" cy="34" r="6"/><circle cx="39" cy="34" r="6"/><circle cx="33" cy="29" r="7"/><rect x="23" y="32" width="21" height="7.5" rx="3.75"/></g>`,
+    body: moonBehindCloud(
+      "nGapP",
+      moon(-2, -2, 1.7),
+      `<circle cx="28" cy="34" r="6"/><circle cx="39" cy="34" r="6"/><circle cx="33" cy="29" r="7"/><rect x="23" y="32" width="21" height="7.5" rx="3.75"/>`,
+    ),
   },
   moon_cloud: {
     viewBox: VB,
-    body:
-      moon(-2, -3, 1.9) +
-      `<g fill="${CLOUD}"><circle cx="25" cy="34" r="7"/><circle cx="38" cy="34" r="7"/><circle cx="31" cy="29" r="8"/><rect x="18" y="32" width="25" height="8.5" rx="4.25"/></g>`,
+    body: moonBehindCloud(
+      "nGapC",
+      moon(-2, -3, 1.9),
+      `<circle cx="25" cy="34" r="7"/><circle cx="38" cy="34" r="7"/><circle cx="31" cy="29" r="8"/><rect x="18" y="32" width="25" height="8.5" rx="4.25"/>`,
+    ),
   },
   moon_rain: {
     viewBox: VB,
-    body: moon(0, 0, 0.92) + SMALLCLOUD + drop(22, 36) + drop(32, 36),
+    body:
+      moonBehindCloud("nGapRain", moon(-5, -3, 1.7), NIGHT_CLOUD) +
+      drop(22, 36) +
+      drop(32, 36),
   },
   moon_storm: {
     viewBox: VB,
     body:
-      moon(0, 0, 0.92) +
-      `<g fill="${CLOUD}"><circle cx="22" cy="26" r="6.5"/><circle cx="35" cy="26" r="6.5"/><circle cx="28" cy="20" r="7.5"/><rect x="16" y="24" width="25" height="8" rx="4"/></g>` +
+      moonBehindCloud("nGapStorm", moon(-5, -3, 1.7), NIGHT_CLOUD) +
       `<path d="M28 33 L21 43 L26 43 L24 47 L32 38 L27.5 38 Z" fill="${BOLT}"/>`,
   },
   moon_snow: {
     viewBox: VB,
     body:
-      moon(0, 0, 0.92) + SMALLCLOUD + flake(23, 40, 3, 1.7) + flake(33, 40, 3, 1.7),
+      moonBehindCloud("nGapSnow", moon(-5, -3, 1.7), NIGHT_CLOUD) +
+      flake(23, 40, 3, 1.7) +
+      flake(33, 40, 3, 1.7),
   },
 };
 
