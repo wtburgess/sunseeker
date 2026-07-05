@@ -21,8 +21,8 @@ const VB = "0 0 48 48";
 const DROP_D = "M3 0 C3 0 6 4.5 6 7.5 A3 3 0 1 1 0 7.5 C0 4.5 3 0 3 0 Z";
 const MOON_D = "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z";
 
-const drop = (x: number, y: number, fill = RAIN) =>
-  `<path transform="translate(${x},${y})" d="${DROP_D}" fill="${fill}"/>`;
+const drop = (x: number, y: number, fill = RAIN, sc = 1) =>
+  `<path transform="translate(${x},${y})${sc !== 1 ? ` scale(${sc})` : ""}" d="${DROP_D}" fill="${fill}"/>`;
 const moon = (tx: number, ty: number, sc: number) =>
   `<path transform="translate(${tx},${ty}) scale(${sc})" d="${MOON_D}" fill="${MOON}"/>`;
 const flake = (cx: number, cy: number, s: number, w = 1.8) => {
@@ -109,8 +109,10 @@ export const WEATHER_GLYPHS: Record<string, Glyph> = {
   foggy: {
     viewBox: VB,
     body:
-      `<g fill="${FOG}"><circle cx="18" cy="22" r="7"/><circle cx="31" cy="22" r="7"/><circle cx="24" cy="16" r="8"/><rect x="11" y="20" width="26" height="8.5" rx="4.25"/></g>` +
-      `<g stroke="${FOG}" stroke-width="2.6" stroke-linecap="round"><line x1="13" y1="36" x2="35" y2="36"/><line x1="17" y1="42" x2="31" y2="42"/></g>`,
+      `<g fill="${FOG}"><circle cx="17" cy="25" r="8"/><circle cx="32" cy="25" r="8"/><circle cx="24" cy="18" r="9.5"/><rect x="9" y="23" width="30" height="10" rx="5"/></g>` +
+      `<g fill="none" stroke="${FOG}" stroke-width="2.6" stroke-linecap="round">` +
+      `<path d="M11 39 q3.25 -2.4 6.5 0 t6.5 0 t6.5 0 t6.5 0"/>` +
+      `<path d="M15 45 q3 2.4 6 0 t6 0 t6 0"/></g>`,
   },
   drizzle: {
     viewBox: VB,
@@ -127,14 +129,13 @@ export const WEATHER_GLYPHS: Record<string, Glyph> = {
   showers: {
     viewBox: VB,
     body:
-      `<circle cx="15" cy="15" r="8.5" fill="${SUN}"/>` +
+      `<circle cx="21" cy="19" r="8.5" fill="${SUN}"/>` +
       `<g stroke="${SUN}" stroke-width="3" stroke-linecap="round">` +
-      `<line x1="15" y1="1" x2="15" y2="5"/><line x1="1" y1="15" x2="5" y2="15"/>` +
-      `<line x1="5.5" y1="5.5" x2="8.5" y2="8.5"/><line x1="24.5" y1="5.5" x2="21.5" y2="8.5"/>` +
-      `<line x1="5.5" y1="24.5" x2="8.5" y2="21.5"/></g>` +
-      SMALLCLOUD +
-      drop(21, 36) +
-      drop(31, 36),
+      `<line x1="21" y1="0" x2="21" y2="5"/><line x1="1" y1="19" x2="7" y2="19"/>` +
+      `<line x1="7" y1="5" x2="11.5" y2="9.5"/><line x1="30.5" y1="9.5" x2="35" y2="5"/></g>` +
+      `<g fill="${CLOUD}"><circle cx="20" cy="32" r="8"/><circle cx="35" cy="32" r="8"/><circle cx="27" cy="26" r="9.5"/><rect x="12" y="30" width="31" height="9.5" rx="4.75"/></g>` +
+      drop(19, 40, RAIN, 0.75) +
+      drop(31, 40, RAIN, 0.75),
   },
   sleet: {
     viewBox: VB,
@@ -157,14 +158,13 @@ export const WEATHER_GLYPHS: Record<string, Glyph> = {
   snow_showers: {
     viewBox: VB,
     body:
-      `<circle cx="15" cy="15" r="8.5" fill="${SUN}"/>` +
+      `<circle cx="21" cy="19" r="8.5" fill="${SUN}"/>` +
       `<g stroke="${SUN}" stroke-width="3" stroke-linecap="round">` +
-      `<line x1="15" y1="1" x2="15" y2="5"/><line x1="1" y1="15" x2="5" y2="15"/>` +
-      `<line x1="5.5" y1="5.5" x2="8.5" y2="8.5"/><line x1="24.5" y1="5.5" x2="21.5" y2="8.5"/>` +
-      `<line x1="5.5" y1="24.5" x2="8.5" y2="21.5"/></g>` +
-      SMALLCLOUD +
-      flake(22, 40, 3, 1.7) +
-      flake(33, 40, 3, 1.7),
+      `<line x1="21" y1="0" x2="21" y2="5"/><line x1="1" y1="19" x2="7" y2="19"/>` +
+      `<line x1="7" y1="5" x2="11.5" y2="9.5"/><line x1="30.5" y1="9.5" x2="35" y2="5"/></g>` +
+      `<g fill="${CLOUD}"><circle cx="20" cy="32" r="8"/><circle cx="35" cy="32" r="8"/><circle cx="27" cy="26" r="9.5"/><rect x="12" y="30" width="31" height="9.5" rx="4.75"/></g>` +
+      flake(22, 44, 2.6, 1.6) +
+      flake(33, 44, 2.6, 1.6),
   },
   storm: {
     viewBox: VB,

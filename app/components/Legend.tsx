@@ -10,9 +10,9 @@ const GROUPS: Group[] = [
   {
     title: "Overdag",
     rows: [
-      { icon: "sky_0", name: "Zon", rule: "Veel zon" },
-      { icon: "sky_1", name: "Overwegend zonnig", rule: "60–85% zon" },
-      { icon: "sky_2", name: "Half bewolkt", rule: "35–60% zon" },
+      { icon: "sky_0", name: "Zon", rule: "≥85% zon · ±7u (winter), ±14u (zomer)" },
+      { icon: "sky_1", name: "Overwegend zonnig", rule: "60–85% zon · 5–7u (winter), 10–14u (zomer)" },
+      { icon: "sky_2", name: "Half bewolkt", rule: "35–60% zon · 3–5u (winter), 6–10u (zomer)" },
       { icon: "sky_3", name: "Bewolkt", rule: "Weinig zon" },
       { icon: "foggy", name: "Mist", rule: "Mistcode, droge lucht" },
     ],
