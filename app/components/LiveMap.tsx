@@ -36,10 +36,20 @@ type Step = "now" | number;
  */
 const HALF_NS_KM = 110; // halve hoogte (noord-zuid)
 const HALF_EW_KM = 65; // halve breedte (oost-west)
-/** Max. aantal plaatsen tegelijk op de kaart (overzicht houden op een telefoon). */
-const MAX_NEARBY = 26;
+/**
+ * Max. aantal plaatsen tegelijk op de kaart. Zoom je uit, dan houden we het
+ * overzichtelijk; zoom je in op een regio, dan mogen er veel meer verschijnen —
+ * zo duiken ook satellietgemeenten (bv. Edegem naast Antwerpen) op.
+ */
+function maxNearbyForZoom(z: number): number {
+  if (z >= 11) return 90;
+  if (z >= 10) return 65;
+  if (z >= 9) return 45;
+  if (z >= 8) return 32;
+  return 24;
+}
 /** Minimale afstand (px) tussen twee getoonde iconen, om overlap te vermijden. */
-const MIN_PX = 56;
+const MIN_PX = 50;
 /** Aantal dagen in de tijdlijn (naast 'Nu'). */
 const TIMELINE_DAYS = 10;
 
@@ -71,9 +81,9 @@ function rectBounds(center: Coords) {
  * plaatsen bij het inzoomen.
  */
 function minPopForZoom(z: number): number {
-  if (z >= 8) return 15_000;
-  if (z >= 7) return 30_000;
-  if (z >= 6) return 80_000;
+  if (z >= 8) return 15_000; // dataset-ondergrens: alle gemeenten in beeld
+  if (z >= 7) return 25_000;
+  if (z >= 6) return 60_000;
   return 250_000;
 }
 
@@ -89,8 +99,8 @@ const TEMP_CENTER =
 /** Marker op de huidige locatie: weericoon + temperatuur in een accent-cirkel. */
 function currentIcon(cond: WeatherCondition, temp: number, struck = false) {
   const iconHtml =
-    weatherGlyphSvg(cond.icon, 32, ACCENT) ??
-    `<span style="font-family:'Material Symbols Outlined';font-size:30px;` +
+    weatherGlyphSvg(cond.icon, 38, ACCENT) ??
+    `<span style="font-family:'Material Symbols Outlined';font-size:34px;` +
       `font-variation-settings:'FILL' 1;line-height:1;color:${ACCENT}">${cond.icon}</span>`;
   // Schuine streep als de eigen locatie niet aan het filter voldoet (blijft in
   // de accent-kleur — dus niet grijs, wél doorgestreept).
@@ -107,7 +117,7 @@ function currentIcon(cond: WeatherCondition, temp: number, struck = false) {
       `flex-direction:column;align-items:center;justify-content:center;gap:0px;` +
       `border:3px solid ${ACCENT}">` +
       iconHtml +
-      `<span style="${TEMP_CENTER}font-size:17px;color:${ACCENT}">${Math.round(temp)}°</span>` +
+      `<span style="${TEMP_CENTER}font-size:19px;color:${ACCENT}">${Math.round(temp)}°</span>` +
       slash +
       `</div>`,
     iconSize: [62, 62],
@@ -140,6 +150,23 @@ function placeIcon(cond: WeatherCondition, temp: number, dimmed: boolean) {
       `</div>`,
     iconSize: [44, 60],
     iconAnchor: [22, 30],
+  });
+}
+
+/**
+ * Los naam-label (zwart, vet, met witte rand) dat we zélf boven de kaart tekenen
+ * — de plaatsnamen in de CARTO-tegels zijn grijs en klein en niet aanpasbaar.
+ * `offsetY` plaatst het label ónder het bijbehorende punt (negatief in Leaflet).
+ */
+function nameIcon(name: string, offsetY: number) {
+  return L.divIcon({
+    className: "",
+    html:
+      `<div style="white-space:nowrap;text-align:center;font-family:'Archivo Narrow',sans-serif;` +
+      `font-weight:700;font-size:14px;line-height:1;color:#141414;` +
+      `text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff">${name}</div>`,
+    iconSize: [130, 16],
+    iconAnchor: [65, offsetY],
   });
 }
 
@@ -219,7 +246,12 @@ function MapEngine({
       const res = await fetch(`/api/cities?${params.toString()}`);
       if (!res.ok) return;
       const cities: City[] = await res.json();
-      const thinned = thinByPixels(cities, map, MIN_PX, MAX_NEARBY);
+      const thinned = thinByPixels(
+        cities,
+        map,
+        MIN_PX,
+        maxNearbyForZoom(map.getZoom()),
+      );
 
       const missing = thinned.filter((c) => !cache.current.has(c.id));
       if (missing.length > 0) {
@@ -303,6 +335,8 @@ export default function LiveMap({
   // Tijdlijn: 'now' of een dag-index; playing = automatisch doorlopen.
   const [step, setStep] = useState<Step>("now");
   const [playing, setPlaying] = useState(false);
+  // Omliggende weer-iconen tonen/verbergen (om de kale kaart te kunnen lezen).
+  const [showIcons, setShowIcons] = useState(true);
   // Filter (standaardwaarden = alles zichtbaar).
   const [showFilter, setShowFilter] = useState(false);
   const [minTemp, setMinTemp] = useState(0);
@@ -392,7 +426,7 @@ export default function LiveMap({
       >
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png"
           subdomains="abcd"
         />
         <MapEngine
@@ -406,7 +440,8 @@ export default function LiveMap({
             icoon achter de eigen-locatie-marker. */}
         {/* Plaatsen in beeld; de stad die met het middelpunt samenvalt weglaten
             (anders staat er een dubbel icoon achter de eigen-locatie-marker). */}
-        {nearby
+        {showIcons &&
+          nearby
           .filter(({ city }) => distanceKm(center, city) > 2)
           .map((place) => {
             const day = step === "now" ? place.days[0] : place.days[step];
@@ -430,6 +465,31 @@ export default function LiveMap({
               />
             );
           })}
+
+        {/* Zelf-getekende plaatsnamen (zwart, leesbaar), altijd zichtbaar — ook
+            als de weer-iconen verborgen zijn, zodat je de kaart kunt lezen. Ze
+            staan iets lager als er een weer-icoon boven staat. */}
+        {nearby
+          .filter(({ city }) => distanceKm(center, city) > 2)
+          .map((place) => (
+            <Marker
+              key={`lbl-${place.city.id}`}
+              position={[place.city.lat, place.city.lon]}
+              icon={nameIcon(place.city.name, showIcons ? -34 : 6)}
+              interactive={false}
+              zIndexOffset={-50}
+            />
+          ))}
+
+        {/* Naam van de eigen/gezochte plaats, onder de accent-cirkel. */}
+        {label && (
+          <Marker
+            position={[center.lat, center.lon]}
+            icon={nameIcon(label, -38)}
+            interactive={false}
+            zIndexOffset={900}
+          />
+        )}
 
         {/* Eigen locatie bovenop. */}
         {ownIcon && (
@@ -460,6 +520,23 @@ export default function LiveMap({
         }`}
       >
         <Icon name="tune" filled className="text-[24px]" />
+      </button>
+
+      {/* Weer-iconen tonen/verbergen, om de kale kaart te kunnen lezen. */}
+      <button
+        onClick={() => setShowIcons((v) => !v)}
+        aria-label={showIcons ? "Weer-iconen verbergen" : "Weer-iconen tonen"}
+        className={`absolute top-[68px] right-3 z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
+          showIcons
+            ? "bg-surface text-primary border-2 border-outline-variant"
+            : "bg-primary text-on-primary"
+        }`}
+      >
+        <Icon
+          name={showIcons ? "visibility" : "visibility_off"}
+          filled
+          className="text-[24px]"
+        />
       </button>
 
       {showFilter && (

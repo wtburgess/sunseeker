@@ -6,7 +6,7 @@ import { TopAppBar } from "./components/TopAppBar";
 import { LocationBar } from "./components/LocationBar";
 import { CityDetail } from "./components/CityDetail";
 import { Legend } from "./components/Legend";
-import { geocode, reverseGeocode } from "./lib/geo";
+import { geocode, reverseGeocode, type GeocodeResult } from "./lib/geo";
 
 export type Coords = { lat: number; lon: number };
 
@@ -65,6 +65,14 @@ export default function Home() {
     );
   }, []);
 
+  // Een aangetikt voorstel: coördinaten zijn al bekend, dus meteen de kaart
+  // verplaatsen zonder een tweede zoekopdracht.
+  const handleSelect = useCallback((place: GeocodeResult) => {
+    setCoords({ lat: place.lat, lon: place.lon });
+    setQuery(place.name);
+    setNotice(null);
+  }, []);
+
   // Getypte plaats opzoeken en de kaart daarheen verplaatsen.
   const handlePlace = useCallback(async (q: string) => {
     try {
@@ -101,6 +109,7 @@ export default function Home() {
             onLocate={useDeviceLocation}
             locating={locating}
             onSubmitPlace={handlePlace}
+            onSelectPlace={handleSelect}
             notice={notice}
           />
           <div className="relative flex-grow min-h-0">
