@@ -2,7 +2,7 @@ import type { City } from "../../lib/cities";
 import citiesEU from "../../data/citiesEU.json";
 
 /**
- * Bounds-API: geeft de plaatsen (≥ 15.000 inw.) binnen het opgevraagde
+ * Bounds-API: geeft de plaatsen (≥ 3.000 inw.) binnen het opgevraagde
  * kaartbeeld terug, gesorteerd op inwonertal. De dataset staat server-side en
  * wordt zo nooit volledig naar de client gestuurd — alleen wat in beeld is.
  *

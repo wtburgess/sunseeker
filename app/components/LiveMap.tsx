@@ -81,7 +81,8 @@ function rectBounds(center: Coords) {
  * plaatsen bij het inzoomen.
  */
 function minPopForZoom(z: number): number {
-  if (z >= 8) return 15_000; // dataset-ondergrens: alle gemeenten in beeld
+  if (z >= 9) return 3_000; // dataset-ondergrens: ook kustdorpen (Carnac, Quiberon)
+  if (z >= 8) return 10_000;
   if (z >= 7) return 25_000;
   if (z >= 6) return 60_000;
   return 250_000;
