@@ -299,6 +299,11 @@ function MapEngine({
     };
     const b = rectBounds(center);
     map.once("moveend", runOnce);
+    // Bij de eerste render kan de kaartcontainer nog geen afmetingen hebben;
+    // dan berekent fitBounds een verkeerde (max-)zoom. invalidateSize() leest de
+    // grootte opnieuw in vlak vóór het kadreren, zodat we altijd het regionale
+    // overzicht krijgen i.p.v. volledig ingezoomd te starten.
+    map.invalidateSize();
     map.fitBounds(
       [
         [b.south, b.west],

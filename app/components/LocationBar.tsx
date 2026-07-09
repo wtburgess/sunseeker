@@ -41,16 +41,21 @@ export function LocationBar({
   const [suggestions, setSuggestions] = useState<GeocodeResult[]>([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
+  // True zolang het veld focus heeft: alleen dán tonen we voorstellen. Zo opent
+  // de lijst niet vanzelf als de plaatsnaam programmatisch wordt ingevuld
+  // (bv. de toestellocatie bij het opstarten).
+  const [focused, setFocused] = useState(false);
   // Onderdrukt één zoekronde direct na een keuze (anders opent de lijst meteen
   // opnieuw doordat het invulveld op de gekozen naam wordt gezet).
   const suppress = useRef(false);
 
-  // Terwijl je typt: (ontdubbeld) voorstellen ophalen.
+  // Terwijl je typt: (ontdubbeld) voorstellen ophalen — enkel bij focus.
   useEffect(() => {
     if (suppress.current) {
       suppress.current = false;
       return;
     }
+    if (!focused) return;
     const q = value.trim();
     if (q.length < 2) {
       setSuggestions([]);
@@ -64,7 +69,7 @@ export function LocationBar({
       if (list.length) setOpen(true);
     }, 250);
     return () => clearTimeout(t);
-  }, [value]);
+  }, [value, focused]);
 
   const showList = open && suggestions.length > 0;
 
@@ -131,8 +136,14 @@ export function LocationBar({
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={onKeyDown}
-            onFocus={() => suggestions.length && setOpen(true)}
-            onBlur={() => setTimeout(() => setOpen(false), 150)}
+            onFocus={() => {
+              setFocused(true);
+              if (suggestions.length) setOpen(true);
+            }}
+            onBlur={() => {
+              setFocused(false);
+              setTimeout(() => setOpen(false), 150);
+            }}
             placeholder="Zoek een plaats…"
             type="text"
             enterKeyHint="search"
