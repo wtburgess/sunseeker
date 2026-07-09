@@ -593,13 +593,43 @@ function Timeline({
 }) {
   // Actieve chip in beeld houden (mee-scrollen als hij buiten beeld valt).
   const activeRef = useRef<HTMLButtonElement | null>(null);
+  const stripRef = useRef<HTMLDivElement | null>(null);
+  // Tijdens het scrubben (vinger over de strip) niet auto-centreren; dat zou de
+  // strip onder je vinger laten verspringen. De laatst gekozen stap onthouden we
+  // om dubbele updates te vermijden.
+  const scrubbing = useRef(false);
+  const lastStep = useRef<Step | null>(null);
+
   useEffect(() => {
+    if (scrubbing.current) return;
     activeRef.current?.scrollIntoView({
       inline: "center",
       block: "nearest",
       behavior: "smooth",
     });
   }, [step]);
+
+  // Kies de dag-chip die zich onder de vinger/cursor bevindt en schuif de strip
+  // aan de randen mee, zodat ook de latere dagen bereikbaar blijven.
+  const stepAtPoint = (clientX: number, clientY: number) => {
+    const el = document.elementFromPoint(clientX, clientY) as HTMLElement | null;
+    const chip = el?.closest?.("[data-step]") as HTMLElement | null;
+    if (!chip) return;
+    const raw = chip.dataset.step!;
+    const s: Step = raw === "now" ? "now" : Number(raw);
+    if (lastStep.current !== s) {
+      lastStep.current = s;
+      onStep(s);
+    }
+    const strip = stripRef.current;
+    if (strip) {
+      const cr = chip.getBoundingClientRect();
+      const sr = strip.getBoundingClientRect();
+      const EDGE = 52;
+      if (cr.right > sr.right - EDGE) strip.scrollLeft += 16;
+      else if (cr.left < sr.left + EDGE) strip.scrollLeft -= 16;
+    }
+  };
 
   return (
     <div className="absolute bottom-0 left-0 right-0 z-[1000] bg-surface/95 backdrop-blur-sm border-t border-outline-variant">
@@ -612,20 +642,42 @@ function Timeline({
         >
           <Icon name={playing ? "pause" : "play_arrow"} filled className="text-[24px]" />
         </button>
-        <div className="flex-grow overflow-x-auto no-scrollbar flex gap-0.5">
+        {/* Sleep je vinger over de dagen om vlot door de verwachting te scrubben;
+            tikken blijft ook gewoon werken. touchAction:none → geen native scroll
+            die met het scrubben botst (we scrollen zelf mee aan de randen). */}
+        <div
+          ref={stripRef}
+          className="flex-grow overflow-x-auto no-scrollbar flex gap-0.5 select-none"
+          style={{ touchAction: "none" }}
+          onPointerDown={(e) => {
+            scrubbing.current = true;
+            lastStep.current = null;
+            e.currentTarget.setPointerCapture?.(e.pointerId);
+            stepAtPoint(e.clientX, e.clientY);
+          }}
+          onPointerMove={(e) => {
+            if (scrubbing.current) stepAtPoint(e.clientX, e.clientY);
+          }}
+          onPointerUp={() => {
+            scrubbing.current = false;
+          }}
+          onPointerCancel={() => {
+            scrubbing.current = false;
+          }}
+        >
           <Chip
+            stepValue="now"
             active={step === "now"}
             innerRef={step === "now" ? activeRef : undefined}
-            onClick={() => onStep("now")}
             label="Nu"
             sub=""
           />
           {days.map((d, i) => (
             <Chip
               key={d.date}
+              stepValue={i}
               active={step === i}
               innerRef={step === i ? activeRef : undefined}
-              onClick={() => onStep(i)}
               label={fmtWeekday(d.date)}
               sub={fmtDayMonth(d.date)}
             />
@@ -639,20 +691,20 @@ function Timeline({
 function Chip({
   active,
   innerRef,
-  onClick,
+  stepValue,
   label,
   sub,
 }: {
   active: boolean;
   innerRef?: Ref<HTMLButtonElement>;
-  onClick: () => void;
+  stepValue: Step;
   label: string;
   sub: string;
 }) {
   return (
     <button
       ref={innerRef}
-      onClick={onClick}
+      data-step={stepValue}
       className={`shrink-0 min-w-[38px] px-1 py-1 rounded-md text-center leading-none active-press transition-colors ${
         active
           ? "bg-primary text-on-primary"
