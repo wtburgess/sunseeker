@@ -44,9 +44,11 @@ const HALF_EW_KM = 65; // halve breedte (oost-west)
 function maxNearbyForZoom(z: number): number {
   if (z >= 11) return 90;
   if (z >= 10) return 65;
-  if (z >= 9) return 45;
-  if (z >= 8) return 32;
-  return 24;
+  if (z >= 9) return 50;
+  // Ver uitgezoomd (continentaal overzicht): ruimer dan vroeger, zodat niet enkel
+  // de allergrootste metropolen tonen maar ook steden als Lyon/Toulouse — anders
+  // oogt een groot, minder dichtbevolkt land als Frankrijk bijna leeg.
+  return 46;
 }
 /** Minimale afstand (px) tussen twee getoonde iconen, om overlap te vermijden. */
 const MIN_PX = 50;
@@ -325,6 +327,27 @@ function MapEngine({
   return null;
 }
 
+/**
+ * Houdt een verwijzing naar de kaart bij (voor de eigen +/–-knoppen) en meldt
+ * het actuele zoomniveau terug, zodat we het cijfer onder de zoomknoppen kunnen
+ * tonen en bij elke zoomwijziging bijwerken.
+ */
+function ZoomTracker({
+  mapRef,
+  setZoom,
+}: {
+  mapRef: React.MutableRefObject<L.Map | null>;
+  setZoom: (z: number) => void;
+}) {
+  const map = useMap();
+  useEffect(() => {
+    mapRef.current = map;
+    setZoom(Math.round(map.getZoom()));
+  }, [map, mapRef, setZoom]);
+  useMapEvents({ zoomend: () => setZoom(Math.round(map.getZoom())) });
+  return null;
+}
+
 export default function LiveMap({
   center,
   label,
@@ -341,6 +364,9 @@ export default function LiveMap({
   // Tijdlijn: 'now' of een dag-index; playing = automatisch doorlopen.
   const [step, setStep] = useState<Step>("now");
   const [playing, setPlaying] = useState(false);
+  // Kaart-verwijzing + actueel zoomniveau (voor de eigen zoombediening).
+  const mapRef = useRef<L.Map | null>(null);
+  const [zoom, setZoom] = useState(8);
   // Omliggende weer-iconen tonen/verbergen (om de kale kaart te kunnen lezen).
   const [showIcons, setShowIcons] = useState(true);
   // Filter (standaardwaarden = alles zichtbaar).
@@ -428,8 +454,10 @@ export default function LiveMap({
         center={[center.lat, center.lon]}
         zoom={8}
         scrollWheelZoom
+        zoomControl={false}
         style={{ height: "100%", width: "100%" }}
       >
+        <ZoomTracker mapRef={mapRef} setZoom={setZoom} />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png"
@@ -519,7 +547,7 @@ export default function LiveMap({
       <button
         onClick={() => setShowFilter((v) => !v)}
         aria-label="Filter"
-        className={`absolute top-3 right-3 z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
+        className={`absolute top-[69px] right-3 z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
           filterActive
             ? "bg-primary text-on-primary"
             : "bg-surface text-primary border-2 border-outline-variant"
@@ -532,7 +560,7 @@ export default function LiveMap({
       <button
         onClick={() => setShowIcons((v) => !v)}
         aria-label={showIcons ? "Weer-iconen verbergen" : "Weer-iconen tonen"}
-        className={`absolute top-[68px] right-3 z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
+        className={`absolute top-[125px] right-3 z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
           showIcons
             ? "bg-surface text-primary border-2 border-outline-variant"
             : "bg-primary text-on-primary"
@@ -544,6 +572,28 @@ export default function LiveMap({
           className="text-[24px]"
         />
       </button>
+
+      {/* Eigen zoombediening: +/– met het actuele zoomniveau eronder. */}
+      <div className="absolute bottom-6 left-3 z-[1000] flex flex-col items-stretch rounded-lg overflow-hidden border-2 border-outline-variant bg-surface stamp-shadow">
+        <button
+          onClick={() => mapRef.current?.zoomIn()}
+          aria-label="Inzoomen"
+          className="w-10 h-10 flex items-center justify-center text-primary active-press"
+        >
+          <Icon name="add" className="text-[24px]" />
+        </button>
+        <button
+          onClick={() => mapRef.current?.zoomOut()}
+          aria-label="Uitzoomen"
+          className="w-10 h-10 flex items-center justify-center text-primary active-press border-t border-outline-variant"
+        >
+          <Icon name="remove" className="text-[24px]" />
+        </button>
+        {/* Zoomniveau relatief getoond: zoom 5 = 0, van daaruit +/-. */}
+        <div className="h-7 flex items-center justify-center text-[18px] font-headline-sm tabular-nums text-on-surface-variant border-t border-outline-variant bg-surface-container-high">
+          {zoom - 5 > 0 ? `+${zoom - 5}` : `${zoom - 5}`}
+        </div>
+      </div>
 
       {showFilter && (
         <FilterPanel
@@ -632,7 +682,7 @@ function Timeline({
   };
 
   return (
-    <div className="absolute bottom-0 left-0 right-0 z-[1000] bg-surface/95 backdrop-blur-sm border-t border-outline-variant">
+    <div className="absolute top-0 left-0 right-0 z-[1000] bg-surface/95 backdrop-blur-sm border-b border-outline-variant">
       <div className="flex items-center gap-1.5 p-1.5">
         <button
           onClick={onTogglePlay}
