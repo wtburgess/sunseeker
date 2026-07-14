@@ -28,9 +28,15 @@ const nl1 = (n: number) =>
 /** Volledig detailoverzicht per dag voor één plaats (opent over de kaart). */
 export function CityDetail({
   place,
+  isFavorite,
+  onToggleFavorite,
+  onOpenLegend,
   onClose,
 }: {
   place: { name: string; lat: number; lon: number };
+  isFavorite: boolean;
+  onToggleFavorite: () => void;
+  onOpenLegend: () => void;
   onClose: () => void;
 }) {
   const [days, setDays] = useState<DailyDetail[] | null>(null);
@@ -64,6 +70,28 @@ export function CityDetail({
         <h2 className="flex-grow font-headline-md text-headline-md uppercase tracking-wide truncate">
           {place.name}
         </h2>
+        <button
+          onClick={onToggleFavorite}
+          aria-label={
+            isFavorite ? "Verwijder uit favorieten" : "Bewaar als favoriet"
+          }
+          className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
+        >
+          <Icon
+            name="favorite"
+            filled={isFavorite}
+            className={`text-[24px] ${
+              isFavorite ? "text-[#d1495b]" : "text-outline"
+            }`}
+          />
+        </button>
+        <button
+          onClick={onOpenLegend}
+          aria-label="Uitleg weericonen"
+          className="w-10 h-10 -mr-1 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
+        >
+          <Icon name="info" className="text-[24px] text-primary" />
+        </button>
       </div>
 
       {/* Lijst per dag */}
@@ -89,6 +117,9 @@ export function CityDetail({
         <HourDetail
           place={place}
           date={openDate}
+          isFavorite={isFavorite}
+          onToggleFavorite={onToggleFavorite}
+          onOpenLegend={onOpenLegend}
           onClose={() => setOpenDate(null)}
         />
       )}

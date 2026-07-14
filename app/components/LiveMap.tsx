@@ -22,6 +22,7 @@ import {
   type WeatherCondition,
 } from "../lib/weather";
 import { type City } from "../lib/cities";
+import { type Favorite } from "../lib/favorites";
 import { distanceKm } from "../lib/geo";
 import { weatherGlyphSvg } from "../lib/weatherGlyphs";
 
@@ -348,13 +349,17 @@ function ZoomTracker({
   return null;
 }
 
+type FavPlace = { fav: Favorite; cur: CurrentWeather; days: DayLite[] };
+
 export default function LiveMap({
   center,
   label,
+  favorites,
   onSelect,
 }: {
   center: Coords;
   label: string;
+  favorites: Favorite[];
   onSelect: (place: { name: string; lat: number; lon: number }) => void;
 }) {
   const [cur, setCur] = useState<CurrentWeather | null>(null);
@@ -367,8 +372,9 @@ export default function LiveMap({
   // Kaart-verwijzing + actueel zoomniveau (voor de eigen zoombediening).
   const mapRef = useRef<L.Map | null>(null);
   const [zoom, setZoom] = useState(8);
-  // Omliggende weer-iconen tonen/verbergen (om de kale kaart te kunnen lezen).
-  const [showIcons, setShowIcons] = useState(true);
+  // "Alleen favorieten"-weergave: enkel de bewaarde plaatsen (met hun weer).
+  const [favoritesOnly, setFavoritesOnly] = useState(false);
+  const [favPlaces, setFavPlaces] = useState<FavPlace[]>([]);
   // Filter (standaardwaarden = alles zichtbaar).
   const [showFilter, setShowFilter] = useState(false);
   const [minTemp, setMinTemp] = useState(0);
@@ -393,11 +399,36 @@ export default function LiveMap({
     };
   }, [center]);
 
-  // Nieuw middelpunt → terug naar 'nu' en stoppen met afspelen.
+  // Nieuw middelpunt → terug naar 'nu' en stoppen met afspelen. De
+  // favorieten-weergave blijft bewust staan tot je zelf op het hartje tikt.
   useEffect(() => {
     setStep("now");
     setPlaying(false);
   }, [center]);
+
+  // Weer (nu + meerdaags) van de favorieten ophalen zodra de favorieten-weergave
+  // aanstaat; buiten die weergave houden we niets bij.
+  useEffect(() => {
+    if (!favoritesOnly || favorites.length === 0) {
+      setFavPlaces([]);
+      return;
+    }
+    let active = true;
+    Promise.all([
+      fetchCurrents(favorites),
+      fetchDailies(favorites, TIMELINE_DAYS),
+    ])
+      .then(([currents, dailies]) => {
+        if (!active) return;
+        setFavPlaces(
+          favorites.map((f, i) => ({ fav: f, cur: currents[i], days: dailies[i] })),
+        );
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [favoritesOnly, favorites]);
 
   const dayCount = centerDays.length;
 
@@ -416,6 +447,26 @@ export default function LiveMap({
   const selectStep = (s: Step) => {
     setStep(s);
     setPlaying(false);
+  };
+
+  // Favorieten-weergave aan/uit. Bij aanzetten kadert de kaart passend op alle
+  // favorieten, zodat je ze in één oogopslag ziet.
+  const toggleFavoritesOnly = () => {
+    if (favoritesOnly) {
+      setFavoritesOnly(false);
+      return;
+    }
+    setFavoritesOnly(true);
+    const m = mapRef.current;
+    if (!m || favorites.length === 0) return;
+    if (favorites.length === 1) {
+      m.setView([favorites[0].lat, favorites[0].lon], 9);
+    } else {
+      m.fitBounds(
+        favorites.map((f) => [f.lat, f.lon] as [number, number]),
+        { padding: [50, 50], maxZoom: 9 },
+      );
+    }
   };
 
   // Filter: max-regen op zijn hoogste stand = geen limiet.
@@ -469,108 +520,147 @@ export default function LiveMap({
           onLoading={setLoading}
         />
 
-        {/* Plaatsen in beeld met hun actuele weer. De stad die met het
-            middelpunt samenvalt laten we weg — anders staat er een dubbel
-            icoon achter de eigen-locatie-marker. */}
-        {/* Plaatsen in beeld; de stad die met het middelpunt samenvalt weglaten
-            (anders staat er een dubbel icoon achter de eigen-locatie-marker). */}
-        {showIcons &&
-          nearby
-          .filter(({ city }) => distanceKm(center, city) > 2)
-          .map((place) => {
-            const day = step === "now" ? place.days[0] : place.days[step];
-            const dimmed = filterActive && !passesFilter(day);
-            const icon = iconForPlace(place, step, dimmed);
-            if (!icon) return null;
-            return (
+        {favoritesOnly ? (
+          <>
+            {/* Alleen de favorieten, met het weer van de gekozen dag. */}
+            {favPlaces.map(({ fav, cur: fcur, days }) => {
+                let fcond: WeatherCondition;
+                let temp: number;
+                if (step === "now") {
+                  if (!fcur) return null;
+                  fcond = conditionFromCurrent(fcur);
+                  temp = fcur.temp;
+                } else {
+                  const d = days?.[step];
+                  if (!d) return null;
+                  fcond = conditionFromDay(d);
+                  temp = d.tMax;
+                }
+                return (
+                  <Marker
+                    key={`fav-${fav.name}-${fav.lat}`}
+                    position={[fav.lat, fav.lon]}
+                    icon={placeIcon(fcond, temp, false)}
+                    eventHandlers={{
+                      click: () =>
+                        onSelect({ name: fav.name, lat: fav.lat, lon: fav.lon }),
+                    }}
+                  />
+                );
+              })}
+            {favPlaces.map(({ fav }) => (
               <Marker
-                key={place.city.id}
-                position={[place.city.lat, place.city.lon]}
-                icon={icon}
-                zIndexOffset={dimmed ? -100 : 0}
+                key={`favlbl-${fav.name}-${fav.lat}`}
+                position={[fav.lat, fav.lon]}
+                icon={nameIcon(fav.name, -34)}
+                interactive={false}
+                zIndexOffset={-50}
+              />
+            ))}
+          </>
+        ) : (
+          <>
+            {/* Plaatsen in beeld; de stad die met het middelpunt samenvalt
+                weglaten (anders een dubbel icoon achter de eigen-locatie). */}
+            {nearby
+              .filter(({ city }) => distanceKm(center, city) > 2)
+              .map((place) => {
+                  const day = step === "now" ? place.days[0] : place.days[step];
+                  const dimmed = filterActive && !passesFilter(day);
+                  const icon = iconForPlace(place, step, dimmed);
+                  if (!icon) return null;
+                  return (
+                    <Marker
+                      key={place.city.id}
+                      position={[place.city.lat, place.city.lon]}
+                      icon={icon}
+                      zIndexOffset={dimmed ? -100 : 0}
+                      eventHandlers={{
+                        click: () =>
+                          onSelect({
+                            name: place.city.name,
+                            lat: place.city.lat,
+                            lon: place.city.lon,
+                          }),
+                      }}
+                    />
+                  );
+                })}
+
+            {/* Zelf-getekende plaatsnamen (zwart), altijd zichtbaar — ook als
+                de weer-iconen verborgen zijn, zodat je de kaart kunt lezen. */}
+            {nearby
+              .filter(({ city }) => distanceKm(center, city) > 2)
+              .map((place) => (
+                <Marker
+                  key={`lbl-${place.city.id}`}
+                  position={[place.city.lat, place.city.lon]}
+                  icon={nameIcon(place.city.name, -34)}
+                  interactive={false}
+                  zIndexOffset={-50}
+                />
+              ))}
+
+            {/* Naam van de eigen/gezochte plaats, onder de accent-cirkel. */}
+            {label && (
+              <Marker
+                position={[center.lat, center.lon]}
+                icon={nameIcon(label, -38)}
+                interactive={false}
+                zIndexOffset={900}
+              />
+            )}
+
+            {/* Eigen locatie bovenop. */}
+            {ownIcon && (
+              <Marker
+                position={[center.lat, center.lon]}
+                icon={ownIcon}
+                zIndexOffset={1000}
                 eventHandlers={{
                   click: () =>
                     onSelect({
-                      name: place.city.name,
-                      lat: place.city.lat,
-                      lon: place.city.lon,
+                      name: label || "Mijn locatie",
+                      lat: center.lat,
+                      lon: center.lon,
                     }),
                 }}
               />
-            );
-          })}
-
-        {/* Zelf-getekende plaatsnamen (zwart, leesbaar), altijd zichtbaar — ook
-            als de weer-iconen verborgen zijn, zodat je de kaart kunt lezen. Ze
-            staan iets lager als er een weer-icoon boven staat. */}
-        {nearby
-          .filter(({ city }) => distanceKm(center, city) > 2)
-          .map((place) => (
-            <Marker
-              key={`lbl-${place.city.id}`}
-              position={[place.city.lat, place.city.lon]}
-              icon={nameIcon(place.city.name, showIcons ? -34 : 6)}
-              interactive={false}
-              zIndexOffset={-50}
-            />
-          ))}
-
-        {/* Naam van de eigen/gezochte plaats, onder de accent-cirkel. */}
-        {label && (
-          <Marker
-            position={[center.lat, center.lon]}
-            icon={nameIcon(label, -38)}
-            interactive={false}
-            zIndexOffset={900}
-          />
-        )}
-
-        {/* Eigen locatie bovenop. */}
-        {ownIcon && (
-          <Marker
-            position={[center.lat, center.lon]}
-            icon={ownIcon}
-            zIndexOffset={1000}
-            eventHandlers={{
-              click: () =>
-                onSelect({
-                  name: label || "Mijn locatie",
-                  lat: center.lat,
-                  lon: center.lon,
-                }),
-            }}
-          />
+            )}
+          </>
         )}
       </MapContainer>
 
-      {/* Filterknop rechtsboven. */}
+      {/* Alleen favorieten tonen (enkel zichtbaar als je favorieten hebt). */}
+      {favorites.length > 0 && (
+        <button
+          onClick={toggleFavoritesOnly}
+          aria-label={
+            favoritesOnly ? "Toon alle plaatsen" : "Toon alleen favorieten"
+          }
+          className={`absolute top-[69px] right-3 z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
+            favoritesOnly
+              ? "bg-primary text-on-primary"
+              : "bg-surface text-primary border-2 border-outline-variant"
+          }`}
+        >
+          <Icon name="favorite" filled className="text-[24px]" />
+        </button>
+      )}
+
+      {/* Filterknop, onder het hartje. */}
       <button
         onClick={() => setShowFilter((v) => !v)}
         aria-label="Filter"
-        className={`absolute top-[69px] right-3 z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
+        className={`absolute z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
+          favorites.length > 0 ? "top-[125px]" : "top-[69px]"
+        } right-3 ${
           filterActive
             ? "bg-primary text-on-primary"
             : "bg-surface text-primary border-2 border-outline-variant"
         }`}
       >
         <Icon name="tune" filled className="text-[24px]" />
-      </button>
-
-      {/* Weer-iconen tonen/verbergen, om de kale kaart te kunnen lezen. */}
-      <button
-        onClick={() => setShowIcons((v) => !v)}
-        aria-label={showIcons ? "Weer-iconen verbergen" : "Weer-iconen tonen"}
-        className={`absolute top-[125px] right-3 z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
-          showIcons
-            ? "bg-surface text-primary border-2 border-outline-variant"
-            : "bg-primary text-on-primary"
-        }`}
-      >
-        <Icon
-          name={showIcons ? "visibility" : "visibility_off"}
-          filled
-          className="text-[24px]"
-        />
       </button>
 
       {/* Eigen zoombediening: +/– met het actuele zoomniveau eronder. */}

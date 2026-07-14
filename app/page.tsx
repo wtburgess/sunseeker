@@ -7,6 +7,13 @@ import { LocationBar } from "./components/LocationBar";
 import { CityDetail } from "./components/CityDetail";
 import { Legend } from "./components/Legend";
 import { geocode, reverseGeocode, type GeocodeResult } from "./lib/geo";
+import {
+  loadFavorites,
+  toggleFavorite,
+  removeFavorite,
+  isFavorite,
+  type Favorite,
+} from "./lib/favorites";
 
 export type Coords = { lat: number; lon: number };
 
@@ -26,6 +33,10 @@ const LiveMap = dynamic(() => import("./components/LiveMap"), {
 export default function Home() {
   const [coords, setCoords] = useState<Coords | null>(null);
   const [query, setQuery] = useState("");
+  // Naam van de ingeladen plaats (los van de bewerkbare zoektekst) — voor de
+  // kaart-titel en om de huidige plaats als favoriet te kunnen bewaren.
+  const [placeName, setPlaceName] = useState("");
+  const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [locating, setLocating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   // Aangeklikte plaats → dag-detailoverzicht (over de zoekbalk + kaart).
@@ -42,6 +53,7 @@ export default function Home() {
     if (!navigator.geolocation) {
       setCoords((c) => c ?? FALLBACK);
       setQuery("Brussel");
+      setPlaceName("Brussel");
       setNotice("Geen toestellocatie beschikbaar — Brussel getoond");
       return;
     }
@@ -53,11 +65,15 @@ export default function Home() {
         setNotice(null);
         setLocating(false);
         const name = await reverseGeocode(here.lat, here.lon).catch(() => null);
-        if (name) setQuery(name);
+        if (name) {
+          setQuery(name);
+          setPlaceName(name);
+        }
       },
       () => {
         setCoords((c) => c ?? FALLBACK);
         setQuery((q) => q || "Brussel");
+        setPlaceName((p) => p || "Brussel");
         setNotice("Geen toegang tot je locatie — typ een plaats of gebruik Brussel");
         setLocating(false);
       },
@@ -70,6 +86,7 @@ export default function Home() {
   const handleSelect = useCallback((place: GeocodeResult) => {
     setCoords({ lat: place.lat, lon: place.lon });
     setQuery(place.name);
+    setPlaceName(place.name);
     setNotice(null);
   }, []);
 
@@ -83,14 +100,44 @@ export default function Home() {
       }
       setCoords({ lat: place.lat, lon: place.lon });
       setQuery(place.name);
+      setPlaceName(place.name);
       setNotice(null);
     } catch {
       setNotice("Zoeken mislukte, probeer opnieuw");
     }
   }, []);
 
-  // Bij het openen: meteen de toestellocatie proberen.
+  // Springt naar een bewaarde favoriet (coördinaten al bekend).
+  const handleSelectFavorite = useCallback((f: Favorite) => {
+    setCoords({ lat: f.lat, lon: f.lon });
+    setQuery(f.name);
+    setPlaceName(f.name);
+    setNotice(null);
+  }, []);
+
+  // De huidige, ingeladen plaats (indien bekend) — bewaarbaar als favoriet.
+  const currentPlace =
+    coords && placeName
+      ? { name: placeName, lat: coords.lat, lon: coords.lon }
+      : null;
+
+  const toggleCurrentFavorite = useCallback(() => {
+    if (!currentPlace) return;
+    setFavorites((list) => toggleFavorite(list, currentPlace));
+  }, [currentPlace]);
+
+  const handleRemoveFavorite = useCallback((f: Favorite) => {
+    setFavorites((list) => removeFavorite(list, f));
+  }, []);
+
+  // Bewaart/verwijdert een concrete plaats (bv. vanuit het detailscherm).
+  const toggleFavoritePlace = useCallback((f: Favorite) => {
+    setFavorites((list) => toggleFavorite(list, f));
+  }, []);
+
+  // Bij het openen: favorieten inladen én meteen de toestellocatie proberen.
   useEffect(() => {
+    setFavorites(loadFavorites());
     useDeviceLocation();
   }, [useDeviceLocation]);
 
@@ -111,10 +158,21 @@ export default function Home() {
             onSubmitPlace={handlePlace}
             onSelectPlace={handleSelect}
             notice={notice}
+            favorites={favorites}
+            canFavorite={!!currentPlace}
+            isCurrentFavorite={!!currentPlace && isFavorite(favorites, currentPlace)}
+            onToggleFavorite={toggleCurrentFavorite}
+            onSelectFavorite={handleSelectFavorite}
+            onRemoveFavorite={handleRemoveFavorite}
           />
           <div className="relative flex-grow min-h-0">
             {coords ? (
-              <LiveMap center={coords} label={query} onSelect={setSelected} />
+              <LiveMap
+                center={coords}
+                label={placeName || query}
+                favorites={favorites}
+                onSelect={setSelected}
+              />
             ) : (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-on-surface-variant">
                 <span className="material-symbols-outlined text-[40px] text-primary animate-pulse">
@@ -127,7 +185,13 @@ export default function Home() {
             )}
           </div>
           {selected && (
-            <CityDetail place={selected} onClose={() => setSelected(null)} />
+            <CityDetail
+              place={selected}
+              isFavorite={isFavorite(favorites, selected)}
+              onToggleFavorite={() => toggleFavoritePlace(selected)}
+              onOpenLegend={() => setShowLegend(true)}
+              onClose={() => setSelected(null)}
+            />
           )}
         </div>
         {showLegend && <Legend onClose={() => setShowLegend(false)} />}

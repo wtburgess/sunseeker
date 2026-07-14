@@ -58,10 +58,50 @@ const GROUPS: Group[] = [
   },
 ];
 
-/** Legenda-scherm: alle weericonen + de regel wanneer elk verschijnt. */
+/** Grote sectiekop (FAVORIETEN / WEERICONEN / FILTER). */
+function SectionTitle({ children }: { children: string }) {
+  return (
+    <h3 className="px-4 pt-4 pb-2 font-headline-md text-headline-md uppercase tracking-wide text-primary border-b-2 border-outline-variant">
+      {children}
+    </h3>
+  );
+}
+
+/** Eén uitleg-regel met icoon (voor Favorieten en Filter). */
+function InfoRow({
+  icon,
+  iconColor,
+  title,
+  text,
+}: {
+  icon: string;
+  iconColor?: string;
+  title: string;
+  text: string;
+}) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-2.5 border-b border-outline-variant">
+      <Icon
+        name={icon}
+        filled
+        className={`text-[36px] shrink-0 ${iconColor ?? "text-primary"}`}
+      />
+      <div className="min-w-0">
+        <div className="font-headline-sm text-[18px] uppercase leading-tight">
+          {title}
+        </div>
+        <div className="text-[13px] text-on-surface-variant leading-tight">
+          {text}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Info-scherm: uitleg over favorieten, weericonen en het filter. */
 export function Legend({ onClose }: { onClose: () => void }) {
   return (
-    <div className="absolute inset-0 z-[1300] bg-surface flex flex-col animate-fade-in">
+    <div className="absolute inset-0 z-[1400] bg-surface flex flex-col animate-fade-in">
       <div className="flex items-center gap-1 px-3 h-14 shrink-0 border-b-2 border-outline-variant">
         <button
           onClick={onClose}
@@ -71,11 +111,20 @@ export function Legend({ onClose }: { onClose: () => void }) {
           <Icon name="arrow_back" className="text-[24px]" />
         </button>
         <h2 className="flex-grow font-headline-md text-headline-md uppercase tracking-wide">
-          Weericonen
+          Info
         </h2>
       </div>
 
       <div className="flex-grow overflow-y-auto">
+        <SectionTitle>Favorieten</SectionTitle>
+        <InfoRow
+          icon="favorite"
+          iconColor="text-[#d1495b]"
+          title="Hartje"
+          text="Tik het hartje om een plaats te bewaren. Met de hartknop op de kaart toon je in één keer alleen je favorieten."
+        />
+
+        <SectionTitle>Weericonen</SectionTitle>
         {GROUPS.map((g) => (
           <div key={g.title}>
             <div className="px-4 pt-3 pb-1 font-headline-sm text-[14px] uppercase tracking-widest text-outline bg-surface-container-low">
@@ -102,9 +151,12 @@ export function Legend({ onClose }: { onClose: () => void }) {
           </div>
         ))}
 
-        <p className="px-4 py-3 text-[13px] leading-snug text-on-surface-variant">
-          Op de kaart: een vervaagd, doorgestreept icoon valt buiten je filter.
-        </p>
+        <SectionTitle>Filter</SectionTitle>
+        <InfoRow
+          icon="tune"
+          title="Temperatuur, zon en regen"
+          text="Stel een minimum- en maximumtemperatuur, minimum zonuren en een maximum aan regen in. Plaatsen die niet voldoen vervagen en krijgen een schuine streep — je eigen locatie blijft zichtbaar maar wordt wel doorgestreept."
+        />
       </div>
     </div>
   );

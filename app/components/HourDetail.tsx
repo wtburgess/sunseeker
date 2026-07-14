@@ -19,10 +19,16 @@ const hh = (h: number) => `${String(h).padStart(2, "0")}:00`;
 export function HourDetail({
   place,
   date,
+  isFavorite,
+  onToggleFavorite,
+  onOpenLegend,
   onClose,
 }: {
   place: { name: string; lat: number; lon: number };
   date: string;
+  isFavorite: boolean;
+  onToggleFavorite: () => void;
+  onOpenLegend: () => void;
   onClose: () => void;
 }) {
   const [hours, setHours] = useState<HourForecast[] | null>(null);
@@ -71,6 +77,28 @@ export function HourDetail({
             {dateLabel}
           </div>
         </div>
+        <button
+          onClick={onToggleFavorite}
+          aria-label={
+            isFavorite ? "Verwijder uit favorieten" : "Bewaar als favoriet"
+          }
+          className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
+        >
+          <Icon
+            name="favorite"
+            filled={isFavorite}
+            className={`text-[24px] ${
+              isFavorite ? "text-[#d1495b]" : "text-outline"
+            }`}
+          />
+        </button>
+        <button
+          onClick={onOpenLegend}
+          aria-label="Uitleg weericonen"
+          className="w-10 h-10 -mr-1 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
+        >
+          <Icon name="info" className="text-[24px] text-primary" />
+        </button>
       </div>
 
       {/* Uren */}
