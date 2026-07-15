@@ -292,20 +292,31 @@ function MapEngine({
   center,
   onLoaded,
   onLoading,
+  onSlowNetwork,
 }: {
   center: Coords;
   onLoaded: (places: NearbyPlace[]) => void;
   onLoading: (loading: boolean) => void;
+  onSlowNetwork: (isSlow: boolean) => void;
 }) {
   const map = useMap();
   const cache = useRef<Map<string, { cur: CurrentWeather; days: DayLite[] }>>(
     new Map(),
   );
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const slowTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const reqId = useRef(0);
 
   const load = useCallback(async () => {
     const id = ++reqId.current;
+    clearTimeout(slowTimer.current);
+    onSlowNetwork(false);
+
+    // Na 5 seconden: als nog steeds aan het laden, schakel naar favorieten
+    slowTimer.current = setTimeout(() => {
+      if (id === reqId.current) onSlowNetwork(true);
+    }, 5000);
+
     const b = map.getBounds();
     const params = new URLSearchParams({
       minLat: String(b.getSouth()),
@@ -348,9 +359,13 @@ function MapEngine({
     } catch {
       // Bijladen is optioneel; stil falen.
     } finally {
-      if (id === reqId.current) onLoading(false);
+      if (id === reqId.current) {
+        onLoading(false);
+        clearTimeout(slowTimer.current);
+        onSlowNetwork(false);
+      }
     }
-  }, [map, onLoaded, onLoading]);
+  }, [map, onLoaded, onLoading, onSlowNetwork]);
 
   const schedule = useCallback(() => {
     clearTimeout(timer.current);
@@ -437,6 +452,7 @@ export default function LiveMap({
   const [centerDays, setCenterDays] = useState<DayLite[]>([]);
   const [nearby, setNearby] = useState<NearbyPlace[]>([]);
   const [loading, setLoading] = useState(false);
+  const [slowNetworkDetected, setSlowNetworkDetected] = useState(false);
   // Tijdlijn: 'now' of een dag-index; playing = automatisch doorlopen.
   const [step, setStep] = useState<Step>("now");
   const [playing, setPlaying] = useState(false);
@@ -475,7 +491,15 @@ export default function LiveMap({
   useEffect(() => {
     setStep("now");
     setPlaying(false);
+    setSlowNetworkDetected(false);
   }, [center]);
+
+  // Langzaam netwerk gedetecteerd → auto-switch naar favorieten als beschikbaar
+  useEffect(() => {
+    if (slowNetworkDetected && favorites.length > 0 && !favoritesOnly) {
+      setFavoritesOnly(true);
+    }
+  }, [slowNetworkDetected, favorites.length, favoritesOnly]);
 
   // Weer (nu + meerdaags) van de favorieten ophalen zodra de favorieten-weergave
   // aanstaat; buiten die weergave houden we niets bij.
@@ -590,7 +614,53 @@ export default function LiveMap({
           center={center}
           onLoaded={setNearby}
           onLoading={setLoading}
+          onSlowNetwork={setSlowNetworkDetected}
         />
+
+        {/* Langzaam netwerk: boodschap en auto-switch naar favorieten */}
+        {slowNetworkDetected && !favoritesOnly && (
+          <div style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(255, 255, 255, 0.92)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            pointerEvents: "none",
+          }}>
+            <div style={{
+              textAlign: "center",
+              padding: "2rem",
+              maxWidth: "300px",
+            }}>
+              <p style={{ fontSize: "16px", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Langzaam netwerk
+              </p>
+              <p style={{ fontSize: "14px", color: "#666", marginBottom: "1rem" }}>
+                De kaart laadt nog. Je favorieten zijn beschikbaar.
+              </p>
+              <button
+                onClick={() => setFavoritesOnly(true)}
+                style={{
+                  padding: "0.75rem 1.5rem",
+                  backgroundColor: "#9d3d22",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                }}
+              >
+                Toon favorieten
+              </button>
+            </div>
+          </div>
+        )}
 
         {favoritesOnly ? (
           <>
