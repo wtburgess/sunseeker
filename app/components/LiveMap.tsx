@@ -146,7 +146,7 @@ function currentIcon(
       // achter het icoon.
       `<span style="position:absolute;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;` +
       `font-family:'Archivo Narrow',sans-serif;font-weight:800;font-size:${tempPx}px;line-height:1;color:#fff;` +
-      `text-shadow:0 1px 2px rgba(0,0,0,.55),0 0 3px rgba(0,0,0,.35)">${Math.round(temp)}°</span>` +
+      `text-shadow:0 1px 2px rgba(0,0,0,.55),0 0 3px rgba(0,0,0,.35)${temp < 0 ? ";margin-top:2px" : ""}">${Math.round(temp)}°</span>` +
       `</div>` +
       slash +
       `</div>`,
@@ -199,7 +199,7 @@ function placeIcon(
       // verdwijnen ondanks dat de span later in de DOM staat.
       `<span style="position:absolute;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;` +
       `font-family:'Archivo Narrow',sans-serif;font-weight:800;font-size:${tempPx}px;line-height:1;color:#fff;` +
-      `text-shadow:0 1px 2px rgba(0,0,0,.55),0 0 3px rgba(0,0,0,.35)">${Math.round(temp)}°</span>` +
+      `text-shadow:0 1px 2px rgba(0,0,0,.55),0 0 3px rgba(0,0,0,.35)${temp < 0 ? ";margin-top:2px" : ""}">${Math.round(temp)}°</span>` +
       slash +
       `</div>`,
     iconSize: [w, glyphPx],
