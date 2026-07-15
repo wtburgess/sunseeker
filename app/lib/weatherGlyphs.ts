@@ -118,13 +118,13 @@ export const WEATHER_GLYPHS: Record<string, Glyph> = {
   sky_1: {
     viewBox: VB,
     body:
-      compactSunAt(22, 20, 10, 14, 18) +
+      compactSunAt(22, 20, 14, 16, 20) +
       `<g fill="${CLOUD}"><circle cx="28" cy="34" r="6"/><circle cx="39" cy="34" r="6"/><circle cx="33" cy="29" r="7"/><rect x="23" y="32" width="21" height="7.5" rx="3.75"/></g>`,
   },
   sky_2: {
     viewBox: VB,
     body:
-      compactSunAt(21, 19, 10, 13, 18) +
+      compactSunAt(21, 19, 14, 16, 20) +
       `<g fill="${CLOUD}"><circle cx="20" cy="32" r="8"/><circle cx="35" cy="32" r="8"/><circle cx="27" cy="26" r="9.5"/><rect x="12" y="30" width="31" height="9.5" rx="4.75"/></g>`,
   },
   sky_3: {
@@ -155,7 +155,7 @@ export const WEATHER_GLYPHS: Record<string, Glyph> = {
   showers: {
     viewBox: VB,
     body:
-      compactSunAt(21, 19, 10, 13, 18) +
+      compactSunAt(21, 19, 14, 16, 20) +
       `<g fill="${CLOUD}"><circle cx="20" cy="32" r="8"/><circle cx="35" cy="32" r="8"/><circle cx="27" cy="26" r="9.5"/><rect x="12" y="30" width="31" height="9.5" rx="4.75"/></g>` +
       drop(19, 40, RAIN, 0.75) +
       drop(31, 40, RAIN, 0.75),
@@ -181,7 +181,7 @@ export const WEATHER_GLYPHS: Record<string, Glyph> = {
   snow_showers: {
     viewBox: VB,
     body:
-      compactSunAt(21, 19, 10, 13, 18) +
+      compactSunAt(21, 19, 14, 16, 20) +
       `<g fill="${CLOUD}"><circle cx="20" cy="32" r="8"/><circle cx="35" cy="32" r="8"/><circle cx="27" cy="26" r="9.5"/><rect x="12" y="30" width="31" height="9.5" rx="4.75"/></g>` +
       flake(22, 44, 2.6, 1.6) +
       flake(33, 44, 2.6, 1.6),
@@ -202,8 +202,7 @@ export const WEATHER_GLYPHS: Record<string, Glyph> = {
   sun_shower: {
     viewBox: VB,
     body:
-      `<circle cx="15" cy="15" r="8" fill="${SUN}"/>` +
-      `<g stroke="${SUN}" stroke-width="2.8" stroke-linecap="round"><line x1="15" y1="1" x2="15" y2="5.5"/><line x1="1" y1="15" x2="5.5" y2="15"/><line x1="29" y1="15" x2="33.5" y2="15"/><line x1="5.5" y1="5.5" x2="8.6" y2="8.6"/><line x1="24.5" y1="5.5" x2="21.4" y2="8.6"/></g>` +
+      compactSunAt(15, 15, 14, 16, 20) +
       `<g fill="none" stroke-width="2.4" stroke-linecap="round"><path d="M6 49 A21 21 0 0 1 48 49" stroke="#d9553a"/><path d="M9 49 A18 18 0 0 1 45 49" stroke="#e79a2a"/><path d="M12 49 A15 15 0 0 1 42 49" stroke="#f0c33a"/><path d="M15 49 A12 12 0 0 1 39 49" stroke="#5f9e4a"/><path d="M18 49 A9 9 0 0 1 36 49" stroke="#4f86a8"/></g>` +
       drop(17, 20, "#4f86a8") +
       drop(27, 22, "#4f86a8"),
