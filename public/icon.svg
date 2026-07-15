@@ -1,25 +1,28 @@
-<svg viewBox="0 0 192 192" xmlns="http://www.w3.org/2000/svg">
-  <!-- Achtergrond met rand -->
-  <rect width="192" height="192" rx="40" fill="#f5ede4" stroke="#9d3d22" stroke-width="12"/>
-
-  <!-- Gele zon -->
-  <circle cx="96" cy="96" r="58" fill="#e6a018"/>
-
-  <!-- Stralen: 8 stuks rond de zon -->
-  <!-- Top -->
-  <rect x="86" y="20" width="20" height="28" rx="10" fill="#9d3d22"/>
-  <!-- Top-right -->
-  <rect x="130" y="38" width="20" height="28" rx="10" fill="#9d3d22" transform="rotate(45 140 52)"/>
-  <!-- Right -->
-  <rect x="144" y="86" width="28" height="20" rx="10" fill="#9d3d22"/>
-  <!-- Bottom-right -->
-  <rect x="130" y="144" width="20" height="28" rx="10" fill="#9d3d22" transform="rotate(45 140 158)"/>
-  <!-- Bottom -->
-  <rect x="86" y="144" width="20" height="28" rx="10" fill="#9d3d22"/>
-  <!-- Bottom-left -->
-  <rect x="42" y="144" width="20" height="28" rx="10" fill="#9d3d22" transform="rotate(-45 52 158)"/>
-  <!-- Left -->
-  <rect x="20" y="86" width="28" height="20" rx="10" fill="#9d3d22"/>
-  <!-- Top-left -->
-  <rect x="42" y="38" width="20" height="28" rx="10" fill="#9d3d22" transform="rotate(-45 52 52)"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect x="8" y="8" width="496" height="496" rx="72" ry="72"
+        fill="#F8F1E8" stroke="#A84A28" stroke-width="8"/>
+  <g transform="translate(256 256)">
+    <circle r="105" fill="#FDB515"/>
+    <g stroke="#A84A28" stroke-width="16" stroke-linecap="round">
+      <line x1="0" y1="-185" x2="0" y2="-145"/>
+      <line x1="0" y1="145" x2="0" y2="185"/>
+      <line x1="-185" y1="0" x2="-145" y2="0"/>
+      <line x1="145" y1="0" x2="185" y2="0"/>
+      <line x1="-131" y1="-131" x2="-103" y2="-103"/>
+      <line x1="103" y1="103" x2="131" y2="131"/>
+      <line x1="131" y1="-131" x2="103" y2="-103"/>
+      <line x1="-103" y1="103" x2="-131" y2="131"/>
+    </g>
+    <g fill="#A84A28">
+      <polygon points="0,-220 -16,-150 16,-150"/>
+      <polygon points="0,220 -16,150 16,150"/>
+      <polygon points="-220,0 -150,-16 -150,16"/>
+      <polygon points="220,0 150,-16 150,16"/>
+      <polygon points="-155,-155 -105,-125 -125,-105"/>
+      <polygon points="155,-155 125,-105 105,-125"/>
+      <polygon points="-155,155 -125,105 -105,125"/>
+      <polygon points="155,155 105,125 125,105"/>
+    </g>
+  </g>
 </svg>
