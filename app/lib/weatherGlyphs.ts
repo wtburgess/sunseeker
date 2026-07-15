@@ -73,6 +73,24 @@ const NIGHT_CLOUD =
   `<circle cx="30" cy="22" r="7.5"/><rect x="18" y="26" width="25" height="8" rx="4"/>`;
 
 /**
+ * Compacte zon met aangepast middelpunt (voor sky_1, sky_2, showers, snow_showers).
+ * Deze versie staat niet gecentreerd op (24,24) maar op een ander punt.
+ */
+function compactSunAt(cx: number, cy: number, rDisc: number, rInner: number, rOuter: number): string {
+  let rays = "";
+  for (let k = 0; k < 8; k++) {
+    const a = (k * Math.PI) / 4;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    rays +=
+      `<line x1="${(cx + rInner * ca).toFixed(2)}" y1="${(cy + rInner * sa).toFixed(2)}" ` +
+      `x2="${(cx + rOuter * ca).toFixed(2)}" y2="${(cy + rOuter * sa).toFixed(2)}" ` +
+      `stroke="${SUN}" stroke-width="3" stroke-linecap="round"/>`;
+  }
+  return `<circle cx="${cx}" cy="${cy}" r="${rDisc}" fill="${SUN}"/>${rays}`;
+}
+
+/**
  * Compacte zon voor kaart-markers: een veel grotere gevulde schijf en kortere
  * stralen dan de gewone `sky_0` (die elders — legenda, detaillijsten — gebruikt
  * blijft). Op de kaart wordt de temperatuur over dit icoon heen gezet; met de
@@ -96,32 +114,17 @@ function compactSun(rDisc: number, rInner: number, rOuter: number): string {
 
 export const WEATHER_GLYPHS: Record<string, Glyph> = {
   sky_0_map: { viewBox: VB, body: compactSun(14, 16, 20) },
-  sky_0: {
-    viewBox: VB,
-    body:
-      `<circle cx="24" cy="24" r="8.5" fill="${SUN}"/>` +
-      `<g stroke="${SUN}" stroke-width="3" stroke-linecap="round">` +
-      `<line x1="24" y1="4" x2="24" y2="10"/><line x1="24" y1="38" x2="24" y2="44"/>` +
-      `<line x1="4" y1="24" x2="10" y2="24"/><line x1="38" y1="24" x2="44" y2="24"/>` +
-      `<line x1="10" y1="10" x2="14.5" y2="14.5"/><line x1="33.5" y1="33.5" x2="38" y2="38"/>` +
-      `<line x1="10" y1="38" x2="14.5" y2="33.5"/><line x1="33.5" y1="14.5" x2="38" y2="10"/></g>`,
-  },
+  sky_0: { viewBox: VB, body: compactSun(14, 16, 20) },
   sky_1: {
     viewBox: VB,
     body:
-      `<circle cx="22" cy="20" r="8.5" fill="${SUN}"/>` +
-      `<g stroke="${SUN}" stroke-width="3" stroke-linecap="round">` +
-      `<line x1="22" y1="0" x2="22" y2="6"/><line x1="2" y1="20" x2="8" y2="20"/><line x1="40" y1="20" x2="45" y2="20"/>` +
-      `<line x1="8" y1="6" x2="12.5" y2="10.5"/><line x1="31.5" y1="10.5" x2="36" y2="6"/></g>` +
+      compactSunAt(22, 20, 10, 14, 18) +
       `<g fill="${CLOUD}"><circle cx="28" cy="34" r="6"/><circle cx="39" cy="34" r="6"/><circle cx="33" cy="29" r="7"/><rect x="23" y="32" width="21" height="7.5" rx="3.75"/></g>`,
   },
   sky_2: {
     viewBox: VB,
     body:
-      `<circle cx="21" cy="19" r="8.5" fill="${SUN}"/>` +
-      `<g stroke="${SUN}" stroke-width="3" stroke-linecap="round">` +
-      `<line x1="21" y1="0" x2="21" y2="5"/><line x1="1" y1="19" x2="7" y2="19"/>` +
-      `<line x1="7" y1="5" x2="11.5" y2="9.5"/><line x1="30.5" y1="9.5" x2="35" y2="5"/></g>` +
+      compactSunAt(21, 19, 10, 13, 18) +
       `<g fill="${CLOUD}"><circle cx="20" cy="32" r="8"/><circle cx="35" cy="32" r="8"/><circle cx="27" cy="26" r="9.5"/><rect x="12" y="30" width="31" height="9.5" rx="4.75"/></g>`,
   },
   sky_3: {
@@ -152,10 +155,7 @@ export const WEATHER_GLYPHS: Record<string, Glyph> = {
   showers: {
     viewBox: VB,
     body:
-      `<circle cx="21" cy="19" r="8.5" fill="${SUN}"/>` +
-      `<g stroke="${SUN}" stroke-width="3" stroke-linecap="round">` +
-      `<line x1="21" y1="0" x2="21" y2="5"/><line x1="1" y1="19" x2="7" y2="19"/>` +
-      `<line x1="7" y1="5" x2="11.5" y2="9.5"/><line x1="30.5" y1="9.5" x2="35" y2="5"/></g>` +
+      compactSunAt(21, 19, 10, 13, 18) +
       `<g fill="${CLOUD}"><circle cx="20" cy="32" r="8"/><circle cx="35" cy="32" r="8"/><circle cx="27" cy="26" r="9.5"/><rect x="12" y="30" width="31" height="9.5" rx="4.75"/></g>` +
       drop(19, 40, RAIN, 0.75) +
       drop(31, 40, RAIN, 0.75),
@@ -181,10 +181,7 @@ export const WEATHER_GLYPHS: Record<string, Glyph> = {
   snow_showers: {
     viewBox: VB,
     body:
-      `<circle cx="21" cy="19" r="8.5" fill="${SUN}"/>` +
-      `<g stroke="${SUN}" stroke-width="3" stroke-linecap="round">` +
-      `<line x1="21" y1="0" x2="21" y2="5"/><line x1="1" y1="19" x2="7" y2="19"/>` +
-      `<line x1="7" y1="5" x2="11.5" y2="9.5"/><line x1="30.5" y1="9.5" x2="35" y2="5"/></g>` +
+      compactSunAt(21, 19, 10, 13, 18) +
       `<g fill="${CLOUD}"><circle cx="20" cy="32" r="8"/><circle cx="35" cy="32" r="8"/><circle cx="27" cy="26" r="9.5"/><rect x="12" y="30" width="31" height="9.5" rx="4.75"/></g>` +
       flake(22, 44, 2.6, 1.6) +
       flake(33, 44, 2.6, 1.6),
