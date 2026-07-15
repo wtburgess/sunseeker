@@ -37,22 +37,29 @@ type Step = "now" | number;
  */
 const HALF_NS_KM = 110; // halve hoogte (noord-zuid)
 const HALF_EW_KM = 65; // halve breedte (oost-west)
+/** Hoeveel groter de weericonen in de favorieten-weergave staan: er staan er
+ *  veel minder tegelijk, dus ze mogen prominenter. */
+const FAV_ICON_SCALE = 1.2;
+/** Lichte vergroting voor de normale kaartweergave — subtieler dan bij de
+ *  favorieten, want hier staan er veel meer iconen tegelijk. */
+const MAP_ICON_SCALE = 1.15;
 /**
- * Max. aantal plaatsen tegelijk op de kaart. Zoom je uit, dan houden we het
- * overzichtelijk; zoom je in op een regio, dan mogen er veel meer verschijnen —
- * zo duiken ook satellietgemeenten (bv. Edegem naast Antwerpen) op.
+ * Max. aantal plaatsen tegelijk op de kaart. Rustiger bij lage/normale zoom
+ * (minder druk, past bij de grotere iconen), maar bij inzoomen mogen er nog
+ * steeds veel verschijnen — zo duiken ook satellietgemeenten op (bv. Edegem
+ * naast Antwerpen) en oogt een land als Frankrijk niet leeg.
  */
 function maxNearbyForZoom(z: number): number {
   if (z >= 11) return 90;
   if (z >= 10) return 65;
-  if (z >= 9) return 50;
-  // Ver uitgezoomd (continentaal overzicht): ruimer dan vroeger, zodat niet enkel
-  // de allergrootste metropolen tonen maar ook steden als Lyon/Toulouse — anders
-  // oogt een groot, minder dichtbevolkt land als Frankrijk bijna leeg.
-  return 46;
+  if (z >= 9) return 48;
+  if (z >= 8) return 30; // standaard opstart-zoom: rustiger beeld
+  return 22; // ver uitgezoomd (continentaal overzicht)
 }
-/** Minimale afstand (px) tussen twee getoonde iconen, om overlap te vermijden. */
-const MIN_PX = 50;
+/** Minimale afstand (px) tussen twee getoonde iconen, om overlap te vermijden.
+ *  Iets ruimer dan het icoon breed is (bij MAP_ICON_SCALE), zodat ze nooit
+ *  raken. */
+const MIN_PX = 56;
 /** Aantal dagen in de tijdlijn (naast 'Nu'). */
 const TIMELINE_DAYS = 10;
 
@@ -101,60 +108,116 @@ const TEMP_CENTER =
   "font-family:'Archivo Narrow',sans-serif;font-weight:700;line-height:1;";
 
 /** Marker op de huidige locatie: weericoon + temperatuur in een accent-cirkel. */
-function currentIcon(cond: WeatherCondition, temp: number, struck = false) {
+function currentIcon(
+  cond: WeatherCondition,
+  temp: number,
+  struck = false,
+  scale = 1,
+) {
+  const glyphPx = Math.round(38 * scale);
+  // Zelfde compacte zon als de gewone plaats-markers: grote schijf, korte
+  // stralen, zodat de temperatuur er leesbaar overheen kan.
+  const glyphName = cond.icon === "sky_0" ? "sky_0_map" : cond.icon;
   const iconHtml =
-    weatherGlyphSvg(cond.icon, 38, ACCENT) ??
-    `<span style="font-family:'Material Symbols Outlined';font-size:34px;` +
+    weatherGlyphSvg(glyphName, glyphPx, ACCENT) ??
+    `<span style="font-family:'Material Symbols Outlined';font-size:${Math.round(34 * scale)}px;` +
       `font-variation-settings:'FILL' 1;line-height:1;color:${ACCENT}">${cond.icon}</span>`;
+  const tempPx = Math.round(15 * scale);
+  // Ring hoeft nu enkel het icoon te omvatten (temperatuur zit ín het icoon,
+  // niet er los onder), dus een stuk krapper dan toen er twee regels in pasten.
+  const d = glyphPx + 12;
   // Schuine streep als de eigen locatie niet aan het filter voldoet (blijft in
   // de accent-kleur — dus niet grijs, wél doorgestreept).
   const slash = struck
-    ? `<svg width="62" height="62" viewBox="0 0 62 62" style="position:absolute;top:0;left:0;pointer-events:none">` +
+    ? `<svg width="${d}" height="${d}" viewBox="0 0 62 62" style="position:absolute;top:0;left:0;pointer-events:none">` +
       `<line x1="12" y1="50" x2="50" y2="12" stroke="${ACCENT}" stroke-width="5" stroke-linecap="round"/></svg>`
     : "";
   return L.divIcon({
     className: "",
     html:
       // Enkel een accent-ring rond het icoon; geen achtergrond, zodat de
-      // onderliggende stad zichtbaar blijft. Icoon + temperatuur zonder schaduw.
-      `<div style="position:relative;width:62px;height:62px;border-radius:50%;display:flex;` +
-      `flex-direction:column;align-items:center;justify-content:center;gap:0px;` +
-      `border:3px solid ${ACCENT}">` +
+      // onderliggende stad zichtbaar blijft.
+      `<div style="position:relative;width:${d}px;height:${d}px;border-radius:50%;display:flex;` +
+      `align-items:center;justify-content:center;border:3px solid ${ACCENT}">` +
+      `<div style="position:relative;width:${glyphPx}px;height:${glyphPx}px;display:flex;align-items:center;justify-content:center;">` +
       iconHtml +
-      `<span style="${TEMP_CENTER}font-size:19px;color:${ACCENT}">${Math.round(temp)}°</span>` +
+      // z-index nodig: Leaflet zet elke SVG boven een gewoon absolute element
+      // (.leaflet-map-pane svg { z-index: 200 }) — anders verdwijnt het cijfer
+      // achter het icoon.
+      `<span style="position:absolute;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;` +
+      `font-family:'Archivo Narrow',sans-serif;font-weight:800;font-size:${tempPx}px;line-height:1;color:#fff;` +
+      `text-shadow:0 1px 2px rgba(0,0,0,.55),0 0 3px rgba(0,0,0,.35)">${Math.round(temp)}°</span>` +
+      `</div>` +
       slash +
       `</div>`,
-    iconSize: [62, 62],
-    iconAnchor: [31, 31],
+    iconSize: [d, d],
+    iconAnchor: [Math.round(d / 2), Math.round(d / 2)],
   });
 }
 
 /**
  * Marker voor een plaats: meerkleurig weericoon + temperatuur. De glyph draagt
  * zijn eigen kleuren; voldoet de plaats niet aan het filter, dan vervagen we het
- * hele icoon met een grijs-filter en een schuine streep.
+ * hele icoon met een grijs-filter en een schuine streep. `scale` maakt het hele
+ * icoon groter (gebruikt in de favorieten-weergave, waar er veel minder
+ * markers tegelijk staan en meer ruimte is om ze prominent te tonen).
  */
-function placeIcon(cond: WeatherCondition, temp: number, dimmed: boolean) {
+function placeIcon(
+  cond: WeatherCondition,
+  temp: number,
+  dimmed: boolean,
+  scale = 1,
+) {
+  const glyphPx = Math.round(38 * scale);
+  // Bij volle zon de compacte kaart-variant (grote schijf, korte stralen) —
+  // die laat, anders dan de gewone sky_0, genoeg solide vlak vrij om de
+  // temperatuur er leesbaar overheen te zetten.
+  const glyphName = cond.icon === "sky_0" ? "sky_0_map" : cond.icon;
   const iconHtml =
-    weatherGlyphSvg(cond.icon, 38, "") ??
-    `<span style="font-family:'Material Symbols Outlined';font-size:34px;` +
+    weatherGlyphSvg(glyphName, glyphPx, "") ??
+    `<span style="font-family:'Material Symbols Outlined';font-size:${Math.round(34 * scale)}px;` +
       `font-variation-settings:'FILL' 1;line-height:1;color:#6b7075">${cond.icon}</span>`;
   const dimCss = dimmed ? "filter:grayscale(1) opacity(0.5);" : "";
+  const w = Math.round(44 * scale);
+  const tempPx = Math.round(15 * scale);
   const slash = dimmed
-    ? `<svg width="44" height="42" viewBox="0 0 44 42" style="position:absolute;top:-1px;left:0;pointer-events:none">` +
+    ? `<svg width="${w}" height="${Math.round(glyphPx * 0.9)}" viewBox="0 0 44 42" style="position:absolute;top:-1px;left:0;pointer-events:none">` +
       `<line x1="8" y1="36" x2="36" y2="6" stroke="#6b7075" stroke-width="5" stroke-linecap="round"/></svg>`
     : "";
+  // Temperatuur bovenop het icoon (niet eronder): wit met een donkere schaduw,
+  // zodat het cijfer op elke ondergrond (amber zon, grijze wolk, blauwe regen…)
+  // goed afsteekt. Scheelt een hele tekstregel, dus de naam komt vlak onder het
+  // icoon te staan.
   return L.divIcon({
     className: "",
     html:
-      `<div style="position:relative;width:44px;display:flex;flex-direction:column;align-items:center;gap:0px;${dimCss}">` +
+      `<div style="position:relative;width:${w}px;height:${glyphPx}px;display:flex;align-items:center;justify-content:center;${dimCss}">` +
       iconHtml +
-      `<span style="${TEMP_CENTER}font-size:19px;color:#3d3d3d">${Math.round(temp)}°</span>` +
+      // z-index nodig: Leaflet zet via `.leaflet-map-pane svg { z-index: 200 }`
+      // élke SVG (ook onze glyph, als flex-item) boven een gewoon absolute
+      // positioned element — zonder dit zou de temperatuur achter het icoon
+      // verdwijnen ondanks dat de span later in de DOM staat.
+      `<span style="position:absolute;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;` +
+      `font-family:'Archivo Narrow',sans-serif;font-weight:800;font-size:${tempPx}px;line-height:1;color:#fff;` +
+      `text-shadow:0 1px 2px rgba(0,0,0,.55),0 0 3px rgba(0,0,0,.35)">${Math.round(temp)}°</span>` +
       slash +
       `</div>`,
-    iconSize: [44, 60],
-    iconAnchor: [22, 30],
+    iconSize: [w, glyphPx],
+    iconAnchor: [Math.round(w / 2), Math.round(glyphPx / 2)],
   });
+}
+
+/** Verticale offset voor het naamlabel onder een `placeIcon`-marker: net onder
+ *  het icoon (de temperatuur zit ín het icoon), met een minimale kier (2px). */
+function placeLabelOffsetY(scale = 1): number {
+  const glyphPx = Math.round(38 * scale);
+  return -(glyphPx - Math.round(glyphPx / 2) + 2);
+}
+
+/** Zelfde, maar voor het naamlabel onder de accent-ring (`currentIcon`). */
+function currentLabelOffsetY(scale = 1): number {
+  const d = Math.round(38 * scale) + 12;
+  return -(d - Math.round(d / 2) + 2);
 }
 
 /**
@@ -162,20 +225,28 @@ function placeIcon(cond: WeatherCondition, temp: number, dimmed: boolean) {
  * — de plaatsnamen in de CARTO-tegels zijn grijs en klein en niet aanpasbaar.
  * `offsetY` plaatst het label ónder het bijbehorende punt (negatief in Leaflet).
  */
-function nameIcon(name: string, offsetY: number) {
+function nameIcon(name: string, offsetY: number, scale = 1) {
+  const fontPx = Math.round(14 * scale);
+  const w = Math.round(130 * scale);
+  const h = Math.round(16 * scale);
   return L.divIcon({
     className: "",
     html:
       `<div style="white-space:nowrap;text-align:center;font-family:'Archivo Narrow',sans-serif;` +
-      `font-weight:700;font-size:14px;line-height:1;color:#141414;` +
+      `font-weight:700;font-size:${fontPx}px;line-height:1;color:#141414;` +
       `text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff">${name}</div>`,
-    iconSize: [130, 16],
-    iconAnchor: [65, offsetY],
+    iconSize: [w, h],
+    iconAnchor: [Math.round(w / 2), offsetY],
   });
 }
 
 /** Marker-icoon voor een plaats op de gekozen tijdlijn-stap (nu of een dag). */
-function iconForPlace(place: NearbyPlace, step: Step, dimmed: boolean) {
+function iconForPlace(
+  place: NearbyPlace,
+  step: Step,
+  dimmed: boolean,
+  scale = 1,
+) {
   let cond: WeatherCondition;
   let temp: number;
   if (step === "now") {
@@ -187,7 +258,7 @@ function iconForPlace(place: NearbyPlace, step: Step, dimmed: boolean) {
     cond = conditionFromDay(d);
     temp = d.tMax;
   }
-  return placeIcon(cond, temp, dimmed);
+  return placeIcon(cond, temp, dimmed, scale);
 }
 
 /**
@@ -489,13 +560,14 @@ export default function LiveMap({
   const ownIcon =
     step === "now"
       ? cond && cur
-        ? currentIcon(cond, cur.temp, ownStruck)
+        ? currentIcon(cond, cur.temp, ownStruck, MAP_ICON_SCALE)
         : null
       : centerDays[step]
         ? currentIcon(
             conditionFromDay(centerDays[step]),
             centerDays[step].tMax,
             ownStruck,
+            MAP_ICON_SCALE,
           )
         : null;
 
@@ -540,7 +612,7 @@ export default function LiveMap({
                   <Marker
                     key={`fav-${fav.name}-${fav.lat}`}
                     position={[fav.lat, fav.lon]}
-                    icon={placeIcon(fcond, temp, false)}
+                    icon={placeIcon(fcond, temp, false, FAV_ICON_SCALE)}
                     eventHandlers={{
                       click: () =>
                         onSelect({ name: fav.name, lat: fav.lat, lon: fav.lon }),
@@ -552,11 +624,30 @@ export default function LiveMap({
               <Marker
                 key={`favlbl-${fav.name}-${fav.lat}`}
                 position={[fav.lat, fav.lon]}
-                icon={nameIcon(fav.name, -34)}
+                icon={nameIcon(fav.name, placeLabelOffsetY(FAV_ICON_SCALE), FAV_ICON_SCALE)}
                 interactive={false}
                 zIndexOffset={-50}
               />
             ))}
+
+            {/* Namen van de overige steden in beeld (geen weericoon, enkel de
+                naam) — zo houd je context bij je favorieten, zoals vroeger het
+                oog-icoon deed voor de gewone kaart. Favorieten zelf overslaan,
+                anders staat er een dubbel label op dezelfde plek. */}
+            {nearby
+              .filter(
+                ({ city }) =>
+                  !favorites.some((f) => distanceKm(city, f) < 2),
+              )
+              .map((place) => (
+                <Marker
+                  key={`ctxlbl-${place.city.id}`}
+                  position={[place.city.lat, place.city.lon]}
+                  icon={nameIcon(place.city.name, 6)}
+                  interactive={false}
+                  zIndexOffset={-100}
+                />
+              ))}
           </>
         ) : (
           <>
@@ -567,7 +658,7 @@ export default function LiveMap({
               .map((place) => {
                   const day = step === "now" ? place.days[0] : place.days[step];
                   const dimmed = filterActive && !passesFilter(day);
-                  const icon = iconForPlace(place, step, dimmed);
+                  const icon = iconForPlace(place, step, dimmed, MAP_ICON_SCALE);
                   if (!icon) return null;
                   return (
                     <Marker
@@ -595,7 +686,7 @@ export default function LiveMap({
                 <Marker
                   key={`lbl-${place.city.id}`}
                   position={[place.city.lat, place.city.lon]}
-                  icon={nameIcon(place.city.name, -34)}
+                  icon={nameIcon(place.city.name, placeLabelOffsetY(MAP_ICON_SCALE), MAP_ICON_SCALE)}
                   interactive={false}
                   zIndexOffset={-50}
                 />
@@ -605,7 +696,7 @@ export default function LiveMap({
             {label && (
               <Marker
                 position={[center.lat, center.lon]}
-                icon={nameIcon(label, -38)}
+                icon={nameIcon(label, currentLabelOffsetY(MAP_ICON_SCALE), MAP_ICON_SCALE)}
                 interactive={false}
                 zIndexOffset={900}
               />

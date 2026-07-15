@@ -72,7 +72,30 @@ const NIGHT_CLOUD =
   `<circle cx="24" cy="28" r="6.5"/><circle cx="37" cy="28" r="6.5"/>` +
   `<circle cx="30" cy="22" r="7.5"/><rect x="18" y="26" width="25" height="8" rx="4"/>`;
 
+/**
+ * Compacte zon voor kaart-markers: een veel grotere gevulde schijf en kortere
+ * stralen dan de gewone `sky_0` (die elders — legenda, detaillijsten — gebruikt
+ * blijft). Op de kaart wordt de temperatuur over dit icoon heen gezet; met de
+ * normale, kleine schijf en lange stralen viel dat cijfer niet meer af te lezen
+ * tussen de stralen door. Deze variant geeft een groot solide amber vlak in het
+ * midden, precies waar het getal komt.
+ */
+function compactSun(rDisc: number, rInner: number, rOuter: number): string {
+  let rays = "";
+  for (let k = 0; k < 8; k++) {
+    const a = (k * Math.PI) / 4;
+    const ca = Math.cos(a);
+    const sa = Math.sin(a);
+    rays +=
+      `<line x1="${(24 + rInner * ca).toFixed(2)}" y1="${(24 + rInner * sa).toFixed(2)}" ` +
+      `x2="${(24 + rOuter * ca).toFixed(2)}" y2="${(24 + rOuter * sa).toFixed(2)}" ` +
+      `stroke="${SUN}" stroke-width="3" stroke-linecap="round"/>`;
+  }
+  return `<circle cx="24" cy="24" r="${rDisc}" fill="${SUN}"/>${rays}`;
+}
+
 export const WEATHER_GLYPHS: Record<string, Glyph> = {
+  sky_0_map: { viewBox: VB, body: compactSun(14, 16, 20) },
   sky_0: {
     viewBox: VB,
     body:
