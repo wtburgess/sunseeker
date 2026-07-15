@@ -145,7 +145,7 @@ export function LocationBar({
   }
 
   return (
-    <div className="relative z-[1200] border-b border-outline-variant bg-surface/95 backdrop-blur-sm px-3 py-2">
+    <div className="sticky top-16 z-[1100] border-b border-outline-variant bg-surface/95 backdrop-blur-sm px-3 py-2">
       <div className="flex items-center gap-2 max-w-2xl mx-auto">
         {/* Links: locatie van pc/smartphone inlezen */}
         <button
