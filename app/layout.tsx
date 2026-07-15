@@ -27,6 +27,9 @@ export default function RootLayout({
   return (
     <html lang="nl" className="h-full antialiased">
       <head>
+        <link rel="icon" href="/icon.svg" type="image/svg+xml" />
+        <link rel="apple-touch-icon" href="/icon.svg" />
+        <link rel="manifest" href="/manifest.json" />
         <link
           href="https://fonts.googleapis.com/css2?family=Archivo+Narrow:wght@400;600;700&family=Fira+Sans:wght@400;500;600&display=swap"
           rel="stylesheet"
