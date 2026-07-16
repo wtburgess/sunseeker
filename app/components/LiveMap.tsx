@@ -11,14 +11,17 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import { Icon } from "./Icon";
+import { RainOverlay } from "./RainOverlay";
 import {
   conditionFromCurrent,
   conditionFromDay,
   fetchCurrent,
   fetchCurrents,
   fetchDailies,
+  fetchMinutelyForecast,
   type CurrentWeather,
   type DayLite,
+  type MinutelyData,
   type WeatherCondition,
 } from "../lib/weather";
 import { type City } from "../lib/cities";
@@ -453,6 +456,8 @@ export default function LiveMap({
   const [nearby, setNearby] = useState<NearbyPlace[]>([]);
   const [loading, setLoading] = useState(false);
   const [slowNetworkDetected, setSlowNetworkDetected] = useState(false);
+  const [minutelyData, setMinutelyData] = useState<MinutelyData | null>(null);
+  const [showRainOverlay, setShowRainOverlay] = useState(false);
   // Tijdlijn: 'now' of een dag-index; playing = automatisch doorlopen.
   const [step, setStep] = useState<Step>("now");
   const [playing, setPlaying] = useState(false);
@@ -479,6 +484,20 @@ export default function LiveMap({
         if (!active) return;
         setCur(c);
         setCenterDays(dd[0] ?? []);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [center]);
+
+  // Minutely regenvoorzpelling ophalen
+  useEffect(() => {
+    let active = true;
+    fetchMinutelyForecast(center)
+      .then((data) => {
+        if (!active) return;
+        setMinutelyData(data);
       })
       .catch(() => {});
     return () => {
@@ -824,6 +843,22 @@ export default function LiveMap({
         <Icon name="tune" filled className="text-[24px]" />
       </button>
 
+      {/* Regenradar-knop */}
+      <button
+        onClick={() => setShowRainOverlay((v) => !v)}
+        aria-label="Regenradar"
+        title="Regenvoorzpelling volgende uur"
+        className={`absolute z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
+          favorites.length > 0 ? "top-[181px]" : "top-[125px]"
+        } right-3 ${
+          showRainOverlay
+            ? "bg-primary text-on-primary"
+            : "bg-surface text-primary border-2 border-outline-variant"
+        }`}
+      >
+        <Icon name="cloud" filled className="text-[24px]" />
+      </button>
+
       {/* Eigen zoombediening: +/– met het actuele zoomniveau eronder. */}
       <div className="absolute bottom-6 left-3 z-[1000] flex flex-col items-stretch rounded-lg overflow-hidden border-2 border-outline-variant bg-surface stamp-shadow">
         <button
@@ -874,6 +909,11 @@ export default function LiveMap({
         playing={playing}
         onTogglePlay={() => setPlaying((p) => !p)}
       />
+
+      {/* Regenradar overlay */}
+      {showRainOverlay && (
+        <RainOverlay data={minutelyData} onClose={() => setShowRainOverlay(false)} />
+      )}
     </div>
   );
 }

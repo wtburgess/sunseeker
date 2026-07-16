@@ -428,6 +428,20 @@ export type CurrentWeather = {
   isDay: boolean; // daglicht of nacht
 };
 
+/** Minuutlijkse regenvoorzpelling (Open-Meteo minutely). */
+export type MinutelyForecast = {
+  time: string; // ISO tijd "2026-07-17T14:32"
+  minute: number; // 0–59 (voor grafieken)
+  precip: number; // mm/min
+  precipProb: number; // % kans
+};
+
+/** Minutely forecast voor volgende 60 minuten. */
+export type MinutelyData = {
+  now: MinutelyForecast;
+  nextHour: MinutelyForecast[];
+};
+
 /** Haalt het weer-op-dit-moment op voor één punt (Open-Meteo `current`). */
 export async function fetchCurrent(point: LatLon): Promise<CurrentWeather> {
   const url =
@@ -482,6 +496,32 @@ export async function fetchCurrents(
   }
   const results = await Promise.all(chunks.map(fetchCurrentChunk));
   return results.flat();
+}
+
+/** Haalt minutely regenvoorzpelling op (volgende 60 minuten). */
+export async function fetchMinutelyForecast(point: LatLon): Promise<MinutelyData> {
+  const url =
+    `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
+    `&minutely=precipitation,precipitation_probability&forecast_minutely=60&timezone=auto`;
+
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Open-Meteo gaf status ${res.status}`);
+
+  const data = await res.json();
+  const m = data.minutely ?? { time: [], precipitation: [], precipitation_probability: [] };
+
+  const now = new Date();
+  const minutes: MinutelyForecast[] = (m.time ?? []).map((time: string, i: number) => ({
+    time,
+    minute: i,
+    precip: m.precipitation?.[i] ?? 0,
+    precipProb: m.precipitation_probability?.[i] ?? 0,
+  }));
+
+  return {
+    now: minutes[0] ?? { time: now.toISOString(), minute: 0, precip: 0, precipProb: 0 },
+    nextHour: minutes.slice(0, 60),
+  };
 }
 
 /**
