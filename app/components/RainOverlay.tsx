@@ -113,7 +113,7 @@ export function RainOverlay({ data, onClose }: { data: MinutelyData | null; onCl
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
         <div>
           <h3 style={{ margin: "0 0 0.25rem 0", fontSize: "16px", fontWeight: "600" }}>
-            Regen voorspelling
+            Regenvoorspelling
           </h3>
           {nextRainMin !== null ? (
             <p style={{ margin: 0, fontSize: "13px", color: "#666" }}>

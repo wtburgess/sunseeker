@@ -846,8 +846,8 @@ export default function LiveMap({
       {/* Regenradar-knop */}
       <button
         onClick={() => setShowRainOverlay((v) => !v)}
-        aria-label="Regenradar"
-        title="Regenvoorzpelling volgende uur"
+        aria-label="Regenvoorspelling"
+        title="Regenvoorspelling volgende uur"
         className={`absolute z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
           favorites.length > 0 ? "top-[181px]" : "top-[125px]"
         } right-3 ${
@@ -856,7 +856,7 @@ export default function LiveMap({
             : "bg-surface text-primary border-2 border-outline-variant"
         }`}
       >
-        <Icon name="cloud" filled className="text-[24px]" />
+        <Icon name="water_drop" filled className="text-[24px]" />
       </button>
 
       {/* Eigen zoombediening: +/– met het actuele zoomniveau eronder. */}
