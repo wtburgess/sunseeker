@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { type MinutelyData } from "../lib/weather";
 
-export function RainOverlay({ data, onClose }: { data: MinutelyData | null; onClose: () => void }) {
+export function RainOverlay({ data, onClose, location }: { data: MinutelyData | null; onClose: () => void; location?: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [nextRainMin, setNextRainMin] = useState<number | null>(null);
 
@@ -113,7 +113,7 @@ export function RainOverlay({ data, onClose }: { data: MinutelyData | null; onCl
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "1rem" }}>
         <div>
           <h3 style={{ margin: "0 0 0.25rem 0", fontSize: "16px", fontWeight: "600" }}>
-            Regenvoorspelling
+            Regenvoorspelling{location ? ` ${location}` : ""}
           </h3>
           {nextRainMin !== null ? (
             <p style={{ margin: 0, fontSize: "13px", color: "#666" }}>

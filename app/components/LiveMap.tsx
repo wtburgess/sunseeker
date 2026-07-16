@@ -912,7 +912,7 @@ export default function LiveMap({
 
       {/* Regenradar overlay */}
       {showRainOverlay && (
-        <RainOverlay data={minutelyData} onClose={() => setShowRainOverlay(false)} />
+        <RainOverlay data={minutelyData} onClose={() => setShowRainOverlay(false)} location={label} />
       )}
     </div>
   );
