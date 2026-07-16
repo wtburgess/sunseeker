@@ -180,8 +180,8 @@ function HourCell({ hour }: { hour: HourForecast }) {
         />
       </div>
       {hour.precip > 0 ? (
-        // Regen toont al bovenaan via het conditie-icoon; hier enkel de mm.
-        <span className="text-[9px] text-tertiary font-medium">
+        <span className="flex items-center gap-0.5 text-[9px] text-tertiary font-medium">
+          <Icon name={rainIcon(hour.precip, "hour")} className="text-xs" />
           {hour.precip}mm
         </span>
       ) : (
