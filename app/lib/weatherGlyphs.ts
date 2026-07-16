@@ -146,23 +146,11 @@ export const WEATHER_GLYPHS: Record<string, Glyph> = {
       RAINCLOUD +
       `<g fill="${RAIN}"><circle cx="15" cy="36" r="1.5"/><circle cx="21" cy="39" r="1.5"/><circle cx="27" cy="36" r="1.5"/><circle cx="33" cy="39" r="1.5"/><circle cx="18" cy="43" r="1.5"/><circle cx="30" cy="43" r="1.5"/><circle cx="24" cy="40" r="1.5"/></g>`,
   },
-  rain_1: {
-    viewBox: VB,
-    body: RAINCLOUD + drop(15, 37) + drop(24, 40) + drop(33, 37),
-  },
-  rain_2: {
-    viewBox: VB,
-    body: RAINCLOUD + drop(11, 35) + drop(19, 39) + drop(27, 35) + drop(35, 39),
-  },
+  rain_1: { viewBox: VB, body: RAINCLOUD + drop(21, 37) },
+  rain_2: { viewBox: VB, body: RAINCLOUD + drop(15, 37) + drop(27, 37) },
   rain_3: {
     viewBox: VB,
-    body:
-      RAINCLOUD_HI +
-      drop(9, 35) +
-      drop(16, 40) +
-      drop(24, 35) +
-      drop(32, 40) +
-      drop(39, 35),
+    body: RAINCLOUD_HI + drop(11, 36) + drop(21, 36) + drop(31, 36),
   },
   showers: {
     viewBox: VB,
@@ -255,6 +243,16 @@ export const WEATHER_GLYPHS: Record<string, Glyph> = {
       moonBehindCloud("nGapSnow", moon(-5, -3, 1.7), NIGHT_CLOUD) +
       flake(23, 40, 3, 1.7) +
       flake(33, 40, 3, 1.7),
+  },
+  raindrops: {
+    viewBox: VB,
+    body:
+      drop(12, 14, RAIN, 0.7) +
+      drop(22, 10, RAIN, 0.7) +
+      drop(32, 15, RAIN, 0.7) +
+      drop(16, 26, RAIN, 0.7) +
+      drop(28, 24, RAIN, 0.7) +
+      drop(36, 28, RAIN, 0.7),
   },
 };
 

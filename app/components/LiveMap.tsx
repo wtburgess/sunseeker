@@ -856,7 +856,7 @@ export default function LiveMap({
             : "bg-surface text-primary border-2 border-outline-variant"
         }`}
       >
-        <Icon name="water_drop" filled className="text-[24px]" />
+        <Icon name="raindrops" className="text-[24px]" />
       </button>
 
       {/* Eigen zoombediening: +/– met het actuele zoomniveau eronder. */}
