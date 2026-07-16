@@ -860,7 +860,7 @@ export default function LiveMap({
       </button>
 
       {/* Eigen zoombediening: +/– met het actuele zoomniveau eronder. */}
-      <div className="absolute bottom-6 left-3 z-[1000] flex flex-col items-stretch rounded-lg overflow-hidden border-2 border-outline-variant bg-surface stamp-shadow">
+      <div className="absolute top-[69px] left-3 z-[1000] flex flex-col items-stretch rounded-lg overflow-hidden border-2 border-outline-variant bg-surface stamp-shadow">
         <button
           onClick={() => mapRef.current?.zoomIn()}
           aria-label="Inzoomen"
