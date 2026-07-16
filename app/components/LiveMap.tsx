@@ -824,7 +824,7 @@ export default function LiveMap({
               : "bg-surface text-primary border-2 border-outline-variant"
           }`}
         >
-          <Icon name="favorite" filled className="text-[24px]" />
+          <Icon name="favorite" filled={false} className="text-[24px]" />
         </button>
       )}
 
