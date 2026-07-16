@@ -94,10 +94,13 @@ function DayRow({ day, city }: { day: DayForecast; city: City }) {
             {day.sunHours.toFixed(1)}u
           </span>
           {day.precip > 0 && (
-            <span className="flex items-center gap-0.5 text-tertiary">
-              <Icon name={rainIcon(day.precip, "day")} className="text-sm" />
-              {day.precip}mm
-            </span>
+            <>
+              <Icon name="raindrops" className="text-sm text-tertiary" />
+              <span className="flex items-center gap-0.5 text-tertiary">
+                <Icon name={rainIcon(day.precip, "day")} className="text-sm" />
+                {day.precip}mm
+              </span>
+            </>
           )}
         </div>
         <span className="w-8 text-right font-headline-sm text-headline-sm text-primary flex-shrink-0">
@@ -181,6 +184,7 @@ function HourCell({ hour }: { hour: HourForecast }) {
       </div>
       {hour.precip > 0 ? (
         <span className="flex items-center gap-0.5 text-[9px] text-tertiary font-medium">
+          <Icon name="raindrops" className="text-xs" />
           <Icon name={rainIcon(hour.precip, "hour")} className="text-xs" />
           {hour.precip}mm
         </span>
