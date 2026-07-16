@@ -85,6 +85,7 @@ export function CityDetail({
             }`}
           />
         </button>
+        <Icon name="raindrops" className="text-[24px] text-primary shrink-0" />
         <button
           onClick={onOpenLegend}
           aria-label="Uitleg weericonen"
