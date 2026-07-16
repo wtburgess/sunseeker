@@ -247,12 +247,12 @@ export const WEATHER_GLYPHS: Record<string, Glyph> = {
   raindrops: {
     viewBox: VB,
     body:
-      drop(12, 14, RAIN, 0.7) +
-      drop(22, 10, RAIN, 0.7) +
-      drop(32, 15, RAIN, 0.7) +
-      drop(16, 26, RAIN, 0.7) +
-      drop(28, 24, RAIN, 0.7) +
-      drop(36, 28, RAIN, 0.7),
+      drop(12, 14, "currentColor", 0.9) +
+      drop(22, 10, "currentColor", 0.9) +
+      drop(32, 15, "currentColor", 0.9) +
+      drop(16, 26, "currentColor", 0.9) +
+      drop(28, 24, "currentColor", 0.9) +
+      drop(36, 28, "currentColor", 0.9),
   },
 };
 
