@@ -207,7 +207,7 @@ export function LocationBar({
             >
               <Icon
                 name="favorite"
-                filled={isCurrentFavorite}
+                filled={false}
                 className={`text-[22px] ${
                   isCurrentFavorite ? "text-[#d1495b]" : "text-outline"
                 }`}
