@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { type MinutelyData } from "../lib/weather";
 
 const LINE = "#5f8091";
-const AREA = "rgba(95, 128, 145, 0.2)";
 const ACCENT = "#9d3d22";
 const GRID = "#dcdcdc";
 const GRIDLIGHT = "#efefef";
@@ -104,9 +103,9 @@ export function RainOverlay({
       ctx.stroke();
     }
 
-    // Verticale hulplijnen: elke 10 min in het minuut-deel, en bij elk uur-vak.
+    // Verticale hulplijnen: elk kwartier in het minuut-deel, en bij elk uur-vak.
     ctx.strokeStyle = GRIDLIGHT;
-    for (let v = 10; v < 60; v += 10) {
+    for (let v = 15; v < 60; v += 15) {
       const x = minX0 + (minW * v) / 60;
       ctx.beginPath();
       ctx.moveTo(x, gy0);
@@ -134,41 +133,29 @@ export function RainOverlay({
       const val = (maxRain * (4 - i)) / 4;
       ctx.fillText(val.toFixed(maxRain <= 3 ? 1 : 0), gx0 - 5, y);
     }
-    // Eenheid linksboven.
+    // Eenheid linksboven (iets hoger dan voorheen).
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    ctx.fillText("mm/u", 2, 2);
+    ctx.fillText("mm/u", 2, 0);
 
-    // ── Kwartier-deel: gevuld vlak + lijn ────────────────────────────────
-    // x volgt de echte minuut-offset (0…60) van elk punt, niet de index.
-    const nMin = minInt.length;
-    const minX = (i: number) =>
-      minX0 + (minW * Math.min(60, Math.max(0, data.nextHour[i].minute))) / 60;
-
-    if (nMin > 0) {
-      ctx.beginPath();
-      ctx.moveTo(minX(0), yFor(minInt[0]));
-      for (let i = 1; i < nMin; i++) ctx.lineTo(minX(i), yFor(minInt[i]));
-      ctx.lineTo(minX(nMin - 1), gy1);
-      ctx.lineTo(minX(0), gy1);
-      ctx.closePath();
-      ctx.fillStyle = AREA;
-      ctx.fill();
-
-      ctx.beginPath();
-      ctx.moveTo(minX(0), yFor(minInt[0]));
-      for (let i = 1; i < nMin; i++) ctx.lineTo(minX(i), yFor(minInt[i]));
-      ctx.strokeStyle = LINE;
-      ctx.lineWidth = 2;
-      ctx.lineJoin = "round";
-      ctx.stroke();
-    }
+    // ── Kwartier-deel: staafjes per 15 min (extra smalle balkjes)
+    const quarterW = minW / 4;
+    ctx.fillStyle = LINE;
+    data.nextHour.forEach((m, i) => {
+      const off = Math.min(60, Math.max(0, m.minute));
+      if (off >= 60) return;
+      const bx = minX0 + (minW * off) / 60;
+      const barGap = quarterW * 0.4; // 40% tussenruimte (veel smallere balkjes)
+      const barW = quarterW - barGap;
+      const by = yFor(minInt[i]);
+      ctx.fillRect(bx + barGap / 2, by, barW, Math.max(0, gy1 - by));
+    });
 
     // ── Uur-deel: staafjes ───────────────────────────────────────────────
     const nHr = hrInt.length;
     if (nHr > 0) {
       const slot = hrW / nHr;
-      const barGap = Math.min(6, slot * 0.25);
+      const barGap = slot * 0.35; // 35% tussenruimte (smallere balkjes)
       const barW = slot - barGap;
       ctx.fillStyle = LINE;
       for (let i = 0; i < nHr; i++) {
@@ -196,9 +183,9 @@ export function RainOverlay({
     ctx.textAlign = "center";
     const ly = h - 8;
 
-    // Minuut-deel: nu · 10m · 20m · 30m · 40m · 50m · 1u
+    // Minuut-deel: nu · 15m · 30m · 45m · 1u (op de kwartier-grenzen)
     ctx.fillText("nu", minX0 + 5, ly);
-    for (let v = 10; v <= 50; v += 10) {
+    for (let v = 15; v <= 45; v += 15) {
       ctx.fillText(`${v}m`, minX0 + (minW * v) / 60, ly);
     }
     ctx.fillText("1u", divX, ly);
@@ -275,8 +262,8 @@ export function RainOverlay({
       {/* Grafiek */}
       <canvas
         ref={canvasRef}
-        width={typeof window !== "undefined" ? window.innerWidth - 32 : 340}
-        height={150}
+        width={typeof window !== "undefined" ? window.innerWidth - 64 : 300}
+        height={120}
         style={{
           border: "1px solid #eee",
           borderRadius: "8px",
