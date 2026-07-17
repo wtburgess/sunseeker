@@ -44,9 +44,6 @@ export function CityDetail({
   // Aangeklikte dag → uur-detail (over de daglijst).
   const [openDate, setOpenDate] = useState<string | null>(null);
 
-  // Vandaag (ISO format).
-  const today = new Date().toISOString().split("T")[0];
-
   useEffect(() => {
     let active = true;
     setDays(null);
@@ -110,18 +107,13 @@ export function CityDetail({
         ) : (
           <ul>
             {days.map((d) => (
-              <DayRow
-                key={d.date}
-                d={d}
-                isToday={d.date === today}
-                onOpen={setOpenDate}
-              />
+              <DayRow key={d.date} d={d} onOpen={setOpenDate} />
             ))}
           </ul>
         )}
       </div>
 
-      {openDate && openDate === today && (
+      {openDate && (
         <HourDetail
           place={place}
           date={openDate}
@@ -137,11 +129,9 @@ export function CityDetail({
 
 function DayRow({
   d,
-  isToday,
   onOpen,
 }: {
   d: DailyDetail;
-  isToday: boolean;
   onOpen: (date: string) => void;
 }) {
   const cond = conditionFromDay(d);
@@ -150,11 +140,8 @@ function DayRow({
   return (
     <li className="border-b border-outline-variant">
       <button
-        onClick={() => isToday && onOpen(d.date)}
-        className={`w-full flex items-center gap-2.5 px-3 py-1.5 text-left ${
-          isToday ? "hover:bg-surface-container-high/60 active-press" : ""
-        }`}
-        disabled={!isToday}
+        onClick={() => onOpen(d.date)}
+        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-surface-container-high/60 active-press"
       >
         {/* Dag + datum */}
         <div className="w-12 shrink-0 leading-none">
@@ -214,22 +201,8 @@ function DayRow({
           <span className="text-[12px] mt-0.5">{d.windBft} Bft</span>
         </div>
 
-        {/* Indicator en/of pijltje */}
-        {isToday ? (
-          <>
-            <span className="text-[11px] text-outline uppercase tracking-widest shrink-0">
-              Uren
-            </span>
-            <Icon
-              name="chevron_right"
-              className="text-[26px] shrink-0 -mr-1 text-outline"
-            />
-          </>
-        ) : (
-          <span className="text-[11px] text-outline-variant uppercase tracking-widest shrink-0">
-            Dag
-          </span>
-        )}
+        {/* Verder-pijltje: klik door naar de uur-lijst. */}
+        <Icon name="chevron_right" className="text-[26px] shrink-0 -mr-1 text-outline" />
       </button>
     </li>
   );
