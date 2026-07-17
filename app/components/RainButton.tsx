@@ -25,7 +25,12 @@ export function RainButton({
     setData(null);
   }, [place]);
 
-  const openRain = () => {
+  // Toggle: klik opent het paneel, nog eens klikken sluit het weer.
+  const toggleRain = () => {
+    if (open) {
+      setOpen(false);
+      return;
+    }
     setOpen(true);
     if (data || loading) return;
     setLoading(true);
@@ -38,9 +43,12 @@ export function RainButton({
   return (
     <>
       <button
-        onClick={openRain}
+        onClick={toggleRain}
         aria-label="Regenvoorspelling"
-        className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
+        aria-pressed={open}
+        className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center active-press ${
+          open ? "bg-surface-container-high" : "hover:bg-surface-container-high"
+        }`}
       >
         <Icon name="raindrops" className="text-[24px] text-primary" />
       </button>
