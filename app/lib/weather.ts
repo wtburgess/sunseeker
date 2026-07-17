@@ -428,18 +428,30 @@ export type CurrentWeather = {
   isDay: boolean; // daglicht of nacht
 };
 
-/** Minuutlijkse regenvoorzpelling (Open-Meteo minutely). */
+/**
+ * Korte-termijn regenpunt uit Open-Meteo `minutely_15` (15-minuten resolutie —
+ * de fijnste die de gratis API biedt; echte 1-minuut data is betaald).
+ */
 export type MinutelyForecast = {
-  time: string; // ISO tijd "2026-07-17T14:32"
-  minute: number; // 0–59 (voor grafieken)
-  precip: number; // mm/min
+  time: string; // ISO tijd "2026-07-17T14:30"
+  minute: number; // minuten vanaf nu (0, 15, 30, 45, 60…) — voor de grafiek
+  precip: number; // mm in dat kwartier (× 4 = intensiteit mm/u)
+  precipProb: number; // % kans (niet beschikbaar op 15-min → 0)
+};
+
+/** Eén uur uit de verlengde regenverwachting (na het eerste, minuut-fijne uur). */
+export type HourlyRain = {
+  time: string; // ISO tijd "2026-07-17T16:00"
+  hoursAhead: number; // 1, 2, 3… vanaf nu
+  precip: number; // mm in dat uur (= intensiteit mm/u)
   precipProb: number; // % kans
 };
 
-/** Minutely forecast voor volgende 60 minuten. */
+/** Korte-termijn regenvoorspelling: volgend uur (per 15 min) + uurlijks daarna. */
 export type MinutelyData = {
   now: MinutelyForecast;
-  nextHour: MinutelyForecast[];
+  nextHour: MinutelyForecast[]; // kwartier-punten binnen ± het volgende uur
+  nextHours: HourlyRain[]; // uurlijkse neerslag ná het eerste uur
 };
 
 /** Haalt het weer-op-dit-moment op voor één punt (Open-Meteo `current`). */
@@ -498,29 +510,65 @@ export async function fetchCurrents(
   return results.flat();
 }
 
-/** Haalt minutely regenvoorzpelling op (volgende 60 minuten). */
+/** Aantal uurlijkse punten ná het eerste (kwartier-fijne) uur. */
+const RAIN_EXTRA_HOURS = 7;
+/** Aantal kwartier-punten in het korte-termijn deel (nu … +60 min). */
+const RAIN_QUARTERS = 5;
+
+/**
+ * Haalt de regenverwachting op: het volgende uur per 15 minuten (Open-Meteo
+ * `minutely_15`) plus de ~7 uren daarna uurlijks (samen ~8 u vooruit). Beide in
+ * één API-call.
+ */
 export async function fetchMinutelyForecast(point: LatLon): Promise<MinutelyData> {
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
-    `&minutely=precipitation,precipitation_probability&forecast_minutely=60&timezone=auto`;
+    `&minutely_15=precipitation` +
+    `&hourly=precipitation,precipitation_probability&forecast_days=2&timezone=auto`;
 
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Open-Meteo gaf status ${res.status}`);
 
   const data = await res.json();
-  const m = data.minutely ?? { time: [], precipitation: [], precipitation_probability: [] };
+  const nowMs = Date.now();
 
-  const now = new Date();
-  const minutes: MinutelyForecast[] = (m.time ?? []).map((time: string, i: number) => ({
-    time,
-    minute: i,
-    precip: m.precipitation?.[i] ?? 0,
-    precipProb: m.precipitation_probability?.[i] ?? 0,
+  // Korte termijn: kwartier-punten vanaf het lopende kwartier tot +60 min.
+  const mq = data.minutely_15 ?? { time: [], precipitation: [] };
+  const raw: { tMs: number; precip: number }[] = [];
+  for (let i = 0; i < (mq.time?.length ?? 0); i++) {
+    const tMs = new Date(mq.time[i]).getTime();
+    if (tMs + 15 * 60 * 1000 <= nowMs) continue; // volledig voorbij
+    raw.push({ tMs, precip: mq.precipitation?.[i] ?? 0 });
+    if (raw.length >= RAIN_QUARTERS) break;
+  }
+  const base0 = raw.length ? raw[0].tMs : nowMs;
+  const nextHour: MinutelyForecast[] = raw.map((q) => ({
+    time: new Date(q.tMs).toISOString(),
+    minute: Math.round((q.tMs - base0) / 60000),
+    precip: q.precip, // mm per kwartier
+    precipProb: 0,
   }));
 
+  // Uurlijkse neerslag ná het eerste uur: neem de uur-markeringen die minstens
+  // ~1 uur in de toekomst liggen, zodat ze niet overlappen met het kwartier-deel.
+  const h = data.hourly ?? { time: [], precipitation: [], precipitation_probability: [] };
+  const cutoffMs = nowMs + 55 * 60 * 1000; // net vóór +1 u
+  const nextHours: HourlyRain[] = [];
+  for (let i = 0; i < (h.time?.length ?? 0); i++) {
+    if (new Date(h.time[i]).getTime() < cutoffMs) continue;
+    nextHours.push({
+      time: h.time[i],
+      hoursAhead: nextHours.length + 1,
+      precip: h.precipitation?.[i] ?? 0,
+      precipProb: h.precipitation_probability?.[i] ?? 0,
+    });
+    if (nextHours.length >= RAIN_EXTRA_HOURS) break;
+  }
+
   return {
-    now: minutes[0] ?? { time: now.toISOString(), minute: 0, precip: 0, precipProb: 0 },
-    nextHour: minutes.slice(0, 60),
+    now: nextHour[0] ?? { time: new Date(nowMs).toISOString(), minute: 0, precip: 0, precipProb: 0 },
+    nextHour,
+    nextHours,
   };
 }
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import { HourDetail } from "./HourDetail";
+import { RainButton } from "./RainButton";
 import {
   conditionFromDay,
   fetchDailyDetail,
@@ -85,7 +86,7 @@ export function CityDetail({
             }`}
           />
         </button>
-        <Icon name="raindrops" className="text-[24px] text-primary shrink-0" />
+        <RainButton place={place} />
         <button
           onClick={onOpenLegend}
           aria-label="Uitleg weericonen"
