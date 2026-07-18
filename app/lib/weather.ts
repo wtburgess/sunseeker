@@ -433,7 +433,7 @@ export type CurrentWeather = {
  * de fijnste die de gratis API biedt; echte 1-minuut data is betaald).
  */
 export type MinutelyForecast = {
-  time: string; // ISO tijd "2026-07-17T14:30"
+  time: string; // lokale kloktijd van de plaats "2026-07-17T14:30" (geen offset)
   minute: number; // minuten vanaf nu (0, 15, 30, 45, 60…) — voor de grafiek
   precip: number; // mm in dat kwartier (× 4 = intensiteit mm/u)
   precipProb: number; // % kans (niet beschikbaar op 15-min → 0)
@@ -532,18 +532,27 @@ export async function fetchMinutelyForecast(point: LatLon): Promise<MinutelyData
   const data = await res.json();
   const nowMs = Date.now();
 
+  // Open-Meteo geeft met `timezone=auto` de tijden in de lokale tijd van de
+  // plaats, zónder offset-marker (bv. "2026-07-18T09:45"). `new Date(...)` zou
+  // die als de tijd van dít toestel lezen — fout zodra de plaats in een andere
+  // tijdzone ligt. Daarom rekenen we via `utc_offset_seconds` naar de echte
+  // absolute epoch (voor het filteren), en houden we de lokale tijdstring aan
+  // voor de weergave (de grafiek toont zo de lokale kloktijd van de plaats).
+  const offsetSec: number = data.utc_offset_seconds ?? 0;
+  const toMs = (local: string) => Date.parse(`${local}Z`) - offsetSec * 1000;
+
   // Korte termijn: kwartier-punten vanaf het lopende kwartier tot +60 min.
   const mq = data.minutely_15 ?? { time: [], precipitation: [] };
-  const raw: { tMs: number; precip: number }[] = [];
+  const raw: { tMs: number; local: string; precip: number }[] = [];
   for (let i = 0; i < (mq.time?.length ?? 0); i++) {
-    const tMs = new Date(mq.time[i]).getTime();
+    const tMs = toMs(mq.time[i]);
     if (tMs + 15 * 60 * 1000 <= nowMs) continue; // volledig voorbij
-    raw.push({ tMs, precip: mq.precipitation?.[i] ?? 0 });
+    raw.push({ tMs, local: mq.time[i], precip: mq.precipitation?.[i] ?? 0 });
     if (raw.length >= RAIN_QUARTERS) break;
   }
   const base0 = raw.length ? raw[0].tMs : nowMs;
   const nextHour: MinutelyForecast[] = raw.map((q) => ({
-    time: new Date(q.tMs).toISOString(),
+    time: q.local, // lokale kloktijd van de plaats
     minute: Math.round((q.tMs - base0) / 60000),
     precip: q.precip, // mm per kwartier
     precipProb: 0,
@@ -555,7 +564,7 @@ export async function fetchMinutelyForecast(point: LatLon): Promise<MinutelyData
   const cutoffMs = nowMs + 55 * 60 * 1000; // net vóór +1 u
   const nextHours: HourlyRain[] = [];
   for (let i = 0; i < (h.time?.length ?? 0); i++) {
-    if (new Date(h.time[i]).getTime() < cutoffMs) continue;
+    if (toMs(h.time[i]) < cutoffMs) continue;
     nextHours.push({
       time: h.time[i],
       hoursAhead: nextHours.length + 1,
@@ -566,7 +575,7 @@ export async function fetchMinutelyForecast(point: LatLon): Promise<MinutelyData
   }
 
   return {
-    now: nextHour[0] ?? { time: new Date(nowMs).toISOString(), minute: 0, precip: 0, precipProb: 0 },
+    now: nextHour[0] ?? { time: mq.time?.[0] ?? "", minute: 0, precip: 0, precipProb: 0 },
     nextHour,
     nextHours,
   };

@@ -16,23 +16,13 @@ function niceMax(v: number): number {
   return Math.ceil(v / 50) * 50;
 }
 
+// De tijdstrings zijn de lokale kloktijd van de plaats ("2026-07-17T16:30").
+// We lezen ze rechtstreeks uit de string, zodat de weergave onafhankelijk is
+// van de tijdzone van het toestel dat de app toont.
 /** Klok-uur uit een ISO-tijd ("2026-07-17T16:00" → "16u"). */
 const clockHour = (iso: string) => `${Number(iso.slice(11, 13))}u`;
-
-/** Echte tijd per kwartier-offset ("09:25", "09:40", etc). */
-function quarterTime(baseTime: string | undefined, minutes: number): string {
-  if (!baseTime) return `${minutes}m`;
-  try {
-    const d = new Date(baseTime);
-    if (isNaN(d.getTime())) return `${minutes}m`;
-    d.setMinutes(d.getMinutes() + minutes);
-    const h = String(d.getHours()).padStart(2, "0");
-    const m = String(d.getMinutes()).padStart(2, "0");
-    return `${h}:${m}`;
-  } catch {
-    return `${minutes}m`;
-  }
-}
+/** Uur:minuut uit een ISO-tijd ("2026-07-17T09:45" → "09:45"). */
+const clockTime = (iso: string) => iso.slice(11, 16);
 
 export function RainOverlay({
   data,
@@ -197,12 +187,13 @@ export function RainOverlay({
     ctx.textBaseline = "alphabetic";
     const ly = h - 8;
 
-    // Minuut-deel: echte tijden per kwartier (4 labels binnen het eerste uur),
-    // gecentreerd onder het midden van elk balkje zodat ze niet overlappen.
-    const baseTime = data.now.time;
+    // Minuut-deel: echte lokale tijd per kwartier (max 4 labels binnen het
+    // eerste uur), gecentreerd onder het midden van elk balkje zodat ze niet
+    // overlappen. We lezen de tijd rechtstreeks uit elk kwartierpunt.
     ctx.textAlign = "center";
-    for (let v = 0; v <= 45; v += 15) {
-      ctx.fillText(quarterTime(baseTime, v), minX0 + (minW * (v + 7.5)) / 60, ly);
+    for (let i = 0; i < Math.min(4, data.nextHour.length); i++) {
+      const cx = minX0 + (minW * (i * 15 + 7.5)) / 60;
+      ctx.fillText(clockTime(data.nextHour[i].time), cx, ly);
     }
 
     // Uur-deel: klok-uur onder elke staaf (om-en-om bij krappe ruimte).
