@@ -46,11 +46,16 @@ export function RainButton({
         onClick={toggleRain}
         aria-label="Regenvoorspelling"
         aria-pressed={open}
-        className={`w-10 h-10 shrink-0 rounded-full flex items-center justify-center active-press ${
-          open ? "bg-surface-container-high" : "hover:bg-surface-container-high"
+        className={`w-10 h-10 shrink-0 rounded-full border-2 flex items-center justify-center active-press ${
+          open
+            ? "bg-primary border-primary"
+            : "border-outline-variant hover:bg-surface-container-high"
         }`}
       >
-        <Icon name="raindrops" className="text-[24px] text-primary" />
+        <Icon
+          name="raindrops"
+          className={`text-[24px] ${open ? "text-on-primary" : "text-primary"}`}
+        />
       </button>
       {open && data && (
         <RainOverlay
