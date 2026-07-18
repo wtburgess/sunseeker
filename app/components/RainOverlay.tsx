@@ -85,7 +85,7 @@ export function RainOverlay({
     // Vlak-indeling.
     const padL = 34;
     const padR = 12;
-    const padT = 12;
+    const padT = 22;
     const padB = 24;
     const gx0 = padL;
     const gx1 = w - padR;
