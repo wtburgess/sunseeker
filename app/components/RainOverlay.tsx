@@ -19,6 +19,21 @@ function niceMax(v: number): number {
 /** Klok-uur uit een ISO-tijd ("2026-07-17T16:00" → "16u"). */
 const clockHour = (iso: string) => `${Number(iso.slice(11, 13))}u`;
 
+/** Echte tijd per kwartier-offset ("09:25", "09:40", etc). */
+function quarterTime(baseTime: string | undefined, minutes: number): string {
+  if (!baseTime) return `${minutes}m`;
+  try {
+    const d = new Date(baseTime);
+    if (isNaN(d.getTime())) return `${minutes}m`;
+    d.setMinutes(d.getMinutes() + minutes);
+    const h = String(d.getHours()).padStart(2, "0");
+    const m = String(d.getMinutes()).padStart(2, "0");
+    return `${h}:${m}`;
+  } catch {
+    return `${minutes}m`;
+  }
+}
+
 export function RainOverlay({
   data,
   onClose,
@@ -124,7 +139,7 @@ export function RainOverlay({
     }
 
     // Y-labels (mm/u) op de hoofdlijnen.
-    ctx.font = "9px sans-serif";
+    ctx.font = "12px sans-serif";
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
     ctx.fillStyle = AXIS;
@@ -178,17 +193,18 @@ export function RainOverlay({
 
     // ── X-labels ─────────────────────────────────────────────────────────
     ctx.fillStyle = AXIS;
-    ctx.font = "9px sans-serif";
+    ctx.font = "12px sans-serif";
     ctx.textBaseline = "alphabetic";
     ctx.textAlign = "center";
     const ly = h - 8;
 
-    // Minuut-deel: nu · 15m · 30m · 45m · 1u (op de kwartier-grenzen)
-    ctx.fillText("nu", minX0 + 5, ly);
+    // Minuut-deel: echte tijden per kwartier
+    const baseTime = data.now.time;
+    ctx.fillText(quarterTime(baseTime, 0), minX0 + 5, ly);
     for (let v = 15; v <= 45; v += 15) {
-      ctx.fillText(`${v}m`, minX0 + (minW * v) / 60, ly);
+      ctx.fillText(quarterTime(baseTime, v), minX0 + (minW * v) / 60, ly);
     }
-    ctx.fillText("1u", divX, ly);
+    ctx.fillText(quarterTime(baseTime, 60), divX, ly);
 
     // Uur-deel: klok-uur onder elke staaf (om-en-om bij krappe ruimte).
     if (nHr > 0) {
@@ -263,7 +279,7 @@ export function RainOverlay({
       <canvas
         ref={canvasRef}
         width={typeof window !== "undefined" ? window.innerWidth - 64 : 300}
-        height={120}
+        height={180}
         style={{
           border: "1px solid #eee",
           borderRadius: "8px",
