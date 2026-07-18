@@ -95,7 +95,7 @@ export function RainOverlay({
     const gH = gy1 - gy0;
 
     const gap = 12; // ruimte rond de scheidingslijn
-    const minFrac = 0.44; // aandeel breedte voor het minuut-uur
+    const minFrac = 0.5; // aandeel breedte voor het eerste uur (kwartieren)
     const minW = (gW - gap) * minFrac;
     const minX0 = gx0;
     const minX1 = gx0 + minW;
@@ -193,18 +193,17 @@ export function RainOverlay({
 
     // ── X-labels ─────────────────────────────────────────────────────────
     ctx.fillStyle = AXIS;
-    ctx.font = "12px sans-serif";
+    ctx.font = "11px sans-serif";
     ctx.textBaseline = "alphabetic";
-    ctx.textAlign = "center";
     const ly = h - 8;
 
-    // Minuut-deel: echte tijden per kwartier
+    // Minuut-deel: echte tijden per kwartier (4 labels binnen het eerste uur),
+    // gecentreerd onder het midden van elk balkje zodat ze niet overlappen.
     const baseTime = data.now.time;
-    ctx.fillText(quarterTime(baseTime, 0), minX0 + 5, ly);
-    for (let v = 15; v <= 45; v += 15) {
-      ctx.fillText(quarterTime(baseTime, v), minX0 + (minW * v) / 60, ly);
+    ctx.textAlign = "center";
+    for (let v = 0; v <= 45; v += 15) {
+      ctx.fillText(quarterTime(baseTime, v), minX0 + (minW * (v + 7.5)) / 60, ly);
     }
-    ctx.fillText(quarterTime(baseTime, 60), divX, ly);
 
     // Uur-deel: klok-uur onder elke staaf (om-en-om bij krappe ruimte).
     if (nHr > 0) {
