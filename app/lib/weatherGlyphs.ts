@@ -12,7 +12,8 @@ const SUN = "#e6a018";
 const CLOUD = "#8b939b";
 const FOG = "#9aa1a8";
 const RAIN = "#5f8091";
-const SNOW = "#84b3c9";
+const SNOW = "#1878c9"; // intens blauw — sneeuwvlokken duidelijk anders dan regen
+const SNOWCLOUD_FILL = "#7ba7d4"; // blauw getinte sneeuwwolk (vs grijze regenwolk)
 const BOLT = "#eaa61f";
 const MOON = "#7e8ea3";
 const HAIL = "#84b3c9";
@@ -43,6 +44,14 @@ const RAINCLOUD =
 /** Wolk iets hoger (voor drie druppels/vlokken eronder). */
 const RAINCLOUD_HI =
   `<g fill="${CLOUD}"><circle cx="17" cy="22" r="7.5"/><circle cx="32" cy="22" r="7.5"/>` +
+  `<circle cx="24" cy="16" r="9"/><rect x="9" y="20" width="30" height="9.5" rx="4.75"/></g>`;
+/** Blauw getinte sneeuwwolk — zelfde vorm als de regenwolk, andere kleur, zodat
+ *  sneeuw in één oogopslag te onderscheiden is van regen. */
+const SNOWCLOUD =
+  `<g fill="${SNOWCLOUD_FILL}"><circle cx="17" cy="24" r="7.5"/><circle cx="32" cy="24" r="7.5"/>` +
+  `<circle cx="24" cy="18" r="9"/><rect x="9" y="22" width="30" height="9.5" rx="4.75"/></g>`;
+const SNOWCLOUD_HI =
+  `<g fill="${SNOWCLOUD_FILL}"><circle cx="17" cy="22" r="7.5"/><circle cx="32" cy="22" r="7.5"/>` +
   `<circle cx="24" cy="16" r="9"/><rect x="9" y="20" width="30" height="9.5" rx="4.75"/></g>`;
 /** Kleine wolk vooraan (voor zon/maan + wolk). */
 const SMALLCLOUD =
@@ -168,23 +177,23 @@ export const WEATHER_GLYPHS: Record<string, Glyph> = {
       drop(29, 35) +
       `<circle cx="24" cy="41" r="2.4" fill="${HAIL}"/>`,
   },
-  snow_1: { viewBox: VB, body: RAINCLOUD + flake(24, 41, 4) },
-  snow_2: { viewBox: VB, body: RAINCLOUD + flake(18, 41, 4) + flake(30, 41, 4) },
+  snow_1: { viewBox: VB, body: SNOWCLOUD + flake(24, 41, 5.2, 2.4) },
+  snow_2: { viewBox: VB, body: SNOWCLOUD + flake(17, 41, 4.8, 2.3) + flake(31, 41, 4.8, 2.3) },
   snow_3: {
     viewBox: VB,
     body:
-      RAINCLOUD_HI +
-      flake(14, 38, 3.5, 1.7) +
-      flake(24, 42, 3.5, 1.7) +
-      flake(34, 38, 3.5, 1.7),
+      SNOWCLOUD_HI +
+      flake(13, 38, 4.2, 2.1) +
+      flake(24, 42, 4.2, 2.1) +
+      flake(35, 38, 4.2, 2.1),
   },
   snow_showers: {
     viewBox: VB,
     body:
       compactSunAt(21, 19, 14, 16, 20) +
-      `<g fill="${CLOUD}"><circle cx="20" cy="32" r="8"/><circle cx="35" cy="32" r="8"/><circle cx="27" cy="26" r="9.5"/><rect x="12" y="30" width="31" height="9.5" rx="4.75"/></g>` +
-      flake(22, 44, 2.6, 1.6) +
-      flake(33, 44, 2.6, 1.6),
+      `<g fill="${SNOWCLOUD_FILL}"><circle cx="20" cy="32" r="8"/><circle cx="35" cy="32" r="8"/><circle cx="27" cy="26" r="9.5"/><rect x="12" y="30" width="31" height="9.5" rx="4.75"/></g>` +
+      flake(21, 44, 3.4, 2.0) +
+      flake(34, 44, 3.4, 2.0),
   },
   storm: {
     viewBox: VB,
@@ -241,8 +250,8 @@ export const WEATHER_GLYPHS: Record<string, Glyph> = {
     viewBox: VB,
     body:
       moonBehindCloud("nGapSnow", moon(-5, -3, 1.7), NIGHT_CLOUD) +
-      flake(23, 40, 3, 1.7) +
-      flake(33, 40, 3, 1.7),
+      flake(23, 41, 3.8, 2.0) +
+      flake(33, 41, 3.8, 2.0),
   },
   raindrops: {
     viewBox: VB,

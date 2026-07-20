@@ -1186,11 +1186,14 @@ function FilterPanel({
       <div className="sticky top-0 z-10 flex items-center gap-2 px-3 h-14 bg-surface border-b-2 border-outline-variant">
         <button
           onClick={reset}
-          className="shrink-0 px-3 py-1.5 rounded-lg font-headline-sm text-[16px] uppercase text-primary hover:bg-surface-container-high active-press"
+          className="shrink-0 px-3 py-1.5 rounded-lg border-2 border-outline-variant bg-surface font-headline-sm text-[15px] uppercase text-primary hover:bg-surface-container-high active-press"
         >
           Reset
         </button>
         {/* Presets: zon / regen / sneeuw — het weericoon zelf als knop. */}
+        <span className="shrink-0 font-headline-sm text-[13px] uppercase tracking-wide text-outline">
+          Presets
+        </span>
         <div className="flex items-center gap-1.5">
           <PresetButton glyph="sky_0" label="Zon" onClick={() => preset("sun")} />
           <PresetButton glyph="rain_2" label="Regen" onClick={() => preset("rain")} />
@@ -1198,34 +1201,40 @@ function FilterPanel({
         </div>
         <button
           onClick={onClose}
-          className="ml-auto shrink-0 px-5 py-1.5 rounded-lg bg-primary text-on-primary font-headline-sm text-[16px] uppercase active-press"
+          className="ml-auto shrink-0 px-4 py-1.5 rounded-lg bg-primary text-on-primary font-headline-sm text-[15px] uppercase active-press"
         >
           OK
         </button>
       </div>
 
-      <div className="pb-4">
+      <div className="pb-3">
+        <GroupLabel>Afstand</GroupLabel>
+        <FilterRow
+          title="Max. afstand"
+          info="Toon enkel plaatsen binnen deze straal vanaf de gezochte plaats. Er wordt een cirkel op de kaart getekend."
+          display={maxDist >= FILTER_DIST_MAX ? "onbeperkt" : `${maxDist} km`}
+          value={maxDist}
+          min={FILTER_DIST_MIN}
+          max={FILTER_DIST_MAX}
+          step={10}
+          onChange={setMaxDist}
+        />
+
         <GroupLabel>Temperatuur</GroupLabel>
-        <FilterRow
-          title="Minimum"
-          info="De laagste maximumtemperatuur van de dag. Plaatsen waar het overdag kouder blijft dan dit, vervagen."
-          display={`${minTemp}°`}
-          value={minTemp}
-          min={0}
-          max={40}
-          step={1}
-          onChange={setMinTemp}
-        />
-        <FilterRow
-          title="Maximum"
-          info="De hoogste maximumtemperatuur van de dag. Plaatsen waar het overdag warmer wordt dan dit, vervagen."
-          display={maxTemp >= 40 ? "40°+" : `${maxTemp}°`}
-          value={maxTemp}
-          min={0}
-          max={40}
-          step={1}
-          onChange={setMaxTemp}
-        />
+        <div className="flex gap-4 px-4 py-0.5">
+          <TempSlider
+            label="Min"
+            display={`${minTemp}°`}
+            value={minTemp}
+            onChange={setMinTemp}
+          />
+          <TempSlider
+            label="Max"
+            display={maxTemp >= 40 ? "40°+" : `${maxTemp}°`}
+            value={maxTemp}
+            onChange={setMaxTemp}
+          />
+        </div>
 
         <GroupLabel>Zon</GroupLabel>
         <FilterRow
@@ -1272,18 +1281,6 @@ function FilterPanel({
           step={1}
           onChange={setMinSnow}
         />
-
-        <GroupLabel>Afstand</GroupLabel>
-        <FilterRow
-          title="Max. afstand"
-          info="Toon enkel plaatsen binnen deze straal vanaf de gezochte plaats. Er wordt een cirkel op de kaart getekend."
-          display={maxDist >= FILTER_DIST_MAX ? "onbeperkt" : `${maxDist} km`}
-          value={maxDist}
-          min={FILTER_DIST_MIN}
-          max={FILTER_DIST_MAX}
-          step={10}
-          onChange={setMaxDist}
-        />
       </div>
     </div>
   );
@@ -1305,16 +1302,16 @@ function PresetButton({
       onClick={onClick}
       aria-label={`Preset: ${label}`}
       title={label}
-      className="w-9 h-9 shrink-0 rounded-full border-2 border-outline-variant bg-surface flex items-center justify-center hover:bg-surface-container-high active-press"
+      className="w-10 h-10 shrink-0 rounded-full border-2 border-outline-variant bg-surface flex items-center justify-center hover:bg-surface-container-high active-press"
     >
-      <Icon name={glyph} className="text-[22px]" />
+      <Icon name={glyph} className="text-[26px]" />
     </button>
   );
 }
 
 function GroupLabel({ children }: { children: string }) {
   return (
-    <div className="px-4 pt-3 pb-1 font-headline-sm text-[15px] uppercase tracking-widest text-outline">
+    <div className="px-4 pt-2 pb-0 font-headline-sm text-[14px] uppercase tracking-widest text-outline">
       {children}
     </div>
   );
@@ -1341,7 +1338,7 @@ function FilterRow({
 }) {
   const [showInfo, setShowInfo] = useState(false);
   return (
-    <div className="px-4 py-2">
+    <div className="px-4 py-0.5">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-1.5 min-w-0">
           <span className="font-headline-sm text-[19px] uppercase truncate">
@@ -1374,7 +1371,43 @@ function FilterRow({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
-        className="mt-1.5"
+        className="mt-0.5 w-full"
+      />
+    </div>
+  );
+}
+
+/** Compacte halve-breedte temperatuur-slider — min en max staan zo naast elkaar
+ *  op één rij (Min/Max is intuïtief genoeg zonder eigen uitleg-knop). */
+function TempSlider({
+  label,
+  display,
+  value,
+  onChange,
+}: {
+  label: string;
+  display: string;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="flex-1 min-w-0">
+      <div className="flex items-baseline justify-between gap-1">
+        <span className="font-headline-sm text-[17px] uppercase truncate">
+          {label}
+        </span>
+        <span className="font-headline-sm text-[19px] text-primary shrink-0">
+          {display}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={40}
+        step={1}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="mt-0.5 w-full"
       />
     </div>
   );
