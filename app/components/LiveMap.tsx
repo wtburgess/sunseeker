@@ -51,6 +51,12 @@ const MAP_ICON_SCALE = 1.15;
 /** Grenzen voor de max-afstand-schuifbalk (km). MAX = onbeperkt (geen cirkel). */
 const FILTER_DIST_MIN = 10;
 const FILTER_DIST_MAX = 3000;
+/** Niet-lineaire stappen: fijn dichtbij, grover naarmate de afstand groeit.
+ *  Eerste = FILTER_DIST_MIN, laatste = FILTER_DIST_MAX (onbeperkt). */
+const DIST_STEPS = [
+  10, 20, 30, 40, 50, 75, 100, 150, 200, 300, 400, 500, 750, 1000, 1500, 2000,
+  2500, 3000,
+];
 /**
  * Max. aantal plaatsen tegelijk op de kaart. Rustiger bij lage/normale zoom
  * (minder druk, past bij de grotere iconen), maar bij inzoomen mogen er nog
@@ -1207,38 +1213,29 @@ function FilterPanel({
         </button>
       </div>
 
-      <div className="pb-3">
-        <GroupLabel>Afstand</GroupLabel>
+      <div className="py-2">
         <FilterRow
-          title="Max. afstand"
+          icon="straighten"
           info="Toon enkel plaatsen binnen deze straal vanaf de gezochte plaats. Er wordt een cirkel op de kaart getekend."
           display={maxDist >= FILTER_DIST_MAX ? "onbeperkt" : `${maxDist} km`}
           value={maxDist}
           min={FILTER_DIST_MIN}
           max={FILTER_DIST_MAX}
           step={10}
+          steps={DIST_STEPS}
           onChange={setMaxDist}
         />
 
-        <GroupLabel>Temperatuur</GroupLabel>
-        <div className="flex gap-4 px-4 py-0.5">
-          <TempSlider
-            label="Min"
-            display={`${minTemp}°`}
-            value={minTemp}
-            onChange={setMinTemp}
-          />
-          <TempSlider
-            label="Max"
-            display={maxTemp >= 40 ? "40°+" : `${maxTemp}°`}
-            value={maxTemp}
-            onChange={setMaxTemp}
-          />
-        </div>
+        <TempPair
+          minTemp={minTemp}
+          setMinTemp={setMinTemp}
+          maxTemp={maxTemp}
+          setMaxTemp={setMaxTemp}
+        />
 
-        <GroupLabel>Zon</GroupLabel>
         <FilterRow
-          title="Min. zonuren"
+          icon="sky_0"
+          title="Min."
           info="Aantal uren zon per dag. Vanaf 8 zonuren heb je een goeie dag."
           display={`${minSun} u`}
           value={minSun}
@@ -1248,9 +1245,9 @@ function FilterPanel({
           onChange={setMinSun}
         />
 
-        <GroupLabel>Regen</GroupLabel>
         <FilterRow
-          title="Min. regen"
+          icon="rain_2"
+          title="Min."
           info="Zoek juist naar regen: plaatsen met mínder regen dan dit vervagen. 1 mm+ = een natte dag."
           display={`${minRain} mm`}
           value={minRain}
@@ -1260,7 +1257,8 @@ function FilterPanel({
           onChange={setMinRain}
         />
         <FilterRow
-          title="Max. regen"
+          icon="rain_2"
+          title="Max."
           info="Totale regen over de hele dag. 0 mm = droog · 1–2 mm = een spatje · 5 mm+ = echt nat. Plaatsen met méér regen vervagen."
           display={maxRain >= 15 ? "alles" : `${maxRain} mm`}
           value={maxRain}
@@ -1270,9 +1268,9 @@ function FilterPanel({
           onChange={setMaxRain}
         />
 
-        <GroupLabel>Sneeuw</GroupLabel>
         <FilterRow
-          title="Min. sneeuw"
+          icon="snow_2"
+          title="Min."
           info="Zoek naar sneeuw: plaatsen met mínder sneeuwval dan dit vervagen. 1 cm+ = een besneeuwde dag."
           display={`${minSnow} cm`}
           value={minSnow}
@@ -1309,15 +1307,9 @@ function PresetButton({
   );
 }
 
-function GroupLabel({ children }: { children: string }) {
-  return (
-    <div className="px-4 pt-2 pb-0 font-headline-sm text-[14px] uppercase tracking-widest text-outline">
-      {children}
-    </div>
-  );
-}
 
 function FilterRow({
+  icon,
   title,
   info,
   display,
@@ -1325,25 +1317,35 @@ function FilterRow({
   min,
   max,
   step,
+  steps,
   onChange,
 }: {
-  title: string;
+  icon: string; // voor-icoon dat de groep aanduidt (i.p.v. een tekst-titel)
+  title?: string; // optioneel kort label (bv. "Min"/"Max") waar dat verschil telt
   info: string;
   display: string;
   value: number;
   min: number;
   max: number;
   step: number;
+  steps?: number[]; // niet-lineaire waarden; schuifbalk loopt dan over de index
   onChange: (v: number) => void;
 }) {
   const [showInfo, setShowInfo] = useState(false);
+  // Met `steps` schuift de balk over de index (gelijke stapjes op het scherm),
+  // maar springt de waarde in steeds grotere sprongen.
+  const stepped = !!steps && steps.length > 0;
+  const idx = stepped ? Math.max(0, steps!.indexOf(value)) : value;
   return (
     <div className="px-4 py-0.5">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="font-headline-sm text-[19px] uppercase truncate">
-            {title}
-          </span>
+        <div className="flex items-center gap-2 min-w-0">
+          <Icon name={icon} className="shrink-0 text-[26px] text-on-surface-variant" />
+          {title && (
+            <span className="font-headline-sm text-[18px] uppercase truncate">
+              {title}
+            </span>
+          )}
           <button
             type="button"
             onClick={() => setShowInfo((v) => !v)}
@@ -1366,36 +1368,111 @@ function FilterRow({
       )}
       <input
         type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        min={stepped ? 0 : min}
+        max={stepped ? steps!.length - 1 : max}
+        step={stepped ? 1 : step}
+        value={idx}
+        onChange={(e) =>
+          onChange(stepped ? steps![Number(e.target.value)] : Number(e.target.value))
+        }
         className="mt-0.5 w-full"
       />
     </div>
   );
 }
 
-/** Compacte halve-breedte temperatuur-slider — min en max staan zo naast elkaar
- *  op één rij (Min/Max is intuïtief genoeg zonder eigen uitleg-knop). */
-function TempSlider({
+/** Temperatuur min + max naast elkaar op één rij, met een (i)-uitleg per kant.
+ *  Er is maar één uitlegtekst tegelijk open; die verschijnt onder de twee. */
+function TempPair({
+  minTemp,
+  setMinTemp,
+  maxTemp,
+  setMaxTemp,
+}: {
+  minTemp: number;
+  setMinTemp: (v: number) => void;
+  maxTemp: number;
+  setMaxTemp: (v: number) => void;
+}) {
+  const [info, setInfo] = useState<null | "min" | "max">(null);
+  const toggle = (k: "min" | "max") =>
+    setInfo((cur) => (cur === k ? null : k));
+  return (
+    <div className="px-4 py-0.5">
+      <div className="flex items-center gap-2">
+        <Icon
+          name="device_thermostat"
+          className="shrink-0 text-[26px] text-on-surface-variant"
+        />
+        <div className="flex flex-1 gap-4 min-w-0">
+          <TempCol
+            label="Min"
+            display={`${minTemp}°`}
+            value={minTemp}
+            onChange={setMinTemp}
+            infoOpen={info === "min"}
+            onInfo={() => toggle("min")}
+          />
+          <TempCol
+            label="Max"
+            display={maxTemp >= 40 ? "40°+" : `${maxTemp}°`}
+            value={maxTemp}
+            onChange={setMaxTemp}
+            infoOpen={info === "max"}
+            onInfo={() => toggle("max")}
+          />
+        </div>
+      </div>
+      {info === "min" && (
+        <p className="text-[14px] leading-snug text-on-surface-variant mt-1">
+          De laagste maximumtemperatuur van de dag. Plaatsen waar het overdag
+          kouder blijft dan dit, vervagen.
+        </p>
+      )}
+      {info === "max" && (
+        <p className="text-[14px] leading-snug text-on-surface-variant mt-1">
+          De hoogste maximumtemperatuur van de dag. Plaatsen waar het overdag
+          warmer wordt dan dit, vervagen.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Eén kolom van het temperatuur-paar: label + (i) + waarde, met de slider. */
+function TempCol({
   label,
   display,
   value,
   onChange,
+  infoOpen,
+  onInfo,
 }: {
   label: string;
   display: string;
   value: number;
   onChange: (v: number) => void;
+  infoOpen: boolean;
+  onInfo: () => void;
 }) {
   return (
     <div className="flex-1 min-w-0">
-      <div className="flex items-baseline justify-between gap-1">
-        <span className="font-headline-sm text-[17px] uppercase truncate">
-          {label}
-        </span>
+      <div className="flex items-center justify-between gap-1">
+        <div className="flex items-center gap-1 min-w-0">
+          <span className="font-headline-sm text-[17px] uppercase truncate">
+            {label}
+          </span>
+          <button
+            type="button"
+            onClick={onInfo}
+            aria-label="Uitleg"
+            className={`shrink-0 active-press ${
+              infoOpen ? "text-primary" : "text-outline hover:text-primary"
+            }`}
+          >
+            <Icon name="info" filled={infoOpen} className="text-[18px]" />
+          </button>
+        </div>
         <span className="font-headline-sm text-[19px] text-primary shrink-0">
           {display}
         </span>
