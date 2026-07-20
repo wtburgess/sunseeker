@@ -4,6 +4,7 @@ import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 import { useCallback, useEffect, useRef, useState, type Ref } from "react";
 import {
+  Circle,
   MapContainer,
   Marker,
   TileLayer,
@@ -46,6 +47,10 @@ const FAV_ICON_SCALE = 1.2;
 /** Lichte vergroting voor de normale kaartweergave — subtieler dan bij de
  *  favorieten, want hier staan er veel meer iconen tegelijk. */
 const MAP_ICON_SCALE = 1.15;
+
+/** Grenzen voor de max-afstand-schuifbalk (km). MAX = onbeperkt (geen cirkel). */
+const FILTER_DIST_MIN = 10;
+const FILTER_DIST_MAX = 3000;
 /**
  * Max. aantal plaatsen tegelijk op de kaart. Rustiger bij lage/normale zoom
  * (minder druk, past bij de grotere iconen), maar bij inzoomen mogen er nog
@@ -171,6 +176,27 @@ function placeIcon(
   dimmed: boolean,
   scale = 1,
 ) {
+  // Plaatsen die niet aan het filter voldoen: geen vol weericoon meer, maar een
+  // klein dik grijs punt met een streepje erdoor. Dat ontrommelt de kaart flink
+  // en toont toch dat er een (uitgefilterde) plaats zit.
+  if (dimmed) {
+    const dot = Math.round(13 * scale);
+    const box = dot + 10;
+    const c = box / 2;
+    const r = dot / 2;
+    const e = r + 3; // streepje net buiten het punt
+    return L.divIcon({
+      className: "",
+      html:
+        `<svg width="${box}" height="${box}" viewBox="0 0 ${box} ${box}">` +
+        `<circle cx="${c}" cy="${c}" r="${r}" fill="#9aa0a6"/>` +
+        `<line x1="${c - e}" y1="${c + e}" x2="${c + e}" y2="${c - e}" ` +
+        `stroke="#5f6368" stroke-width="3" stroke-linecap="round"/></svg>`,
+      iconSize: [box, box],
+      iconAnchor: [Math.round(c), Math.round(c)],
+    });
+  }
+
   const glyphPx = Math.round(38 * scale);
   // Bij volle zon de compacte kaart-variant (grote schijf, korte stralen) —
   // die laat, anders dan de gewone sky_0, genoeg solide vlak vrij om de
@@ -180,13 +206,8 @@ function placeIcon(
     weatherGlyphSvg(glyphName, glyphPx, "") ??
     `<span style="font-family:'Material Symbols Outlined';font-size:${Math.round(34 * scale)}px;` +
       `font-variation-settings:'FILL' 1;line-height:1;color:#6b7075">${cond.icon}</span>`;
-  const dimCss = dimmed ? "filter:grayscale(1) opacity(0.5);" : "";
   const w = Math.round(44 * scale);
   const tempPx = Math.round(15 * scale);
-  const slash = dimmed
-    ? `<svg width="${w}" height="${Math.round(glyphPx * 0.9)}" viewBox="0 0 44 42" style="position:absolute;top:-1px;left:0;pointer-events:none">` +
-      `<line x1="8" y1="36" x2="36" y2="6" stroke="#6b7075" stroke-width="5" stroke-linecap="round"/></svg>`
-    : "";
   // Temperatuur bovenop het icoon (niet eronder): wit met een donkere schaduw,
   // zodat het cijfer op elke ondergrond (amber zon, grijze wolk, blauwe regen…)
   // goed afsteekt. Scheelt een hele tekstregel, dus de naam komt vlak onder het
@@ -194,7 +215,7 @@ function placeIcon(
   return L.divIcon({
     className: "",
     html:
-      `<div style="position:relative;width:${w}px;height:${glyphPx}px;display:flex;align-items:center;justify-content:center;${dimCss}">` +
+      `<div style="position:relative;width:${w}px;height:${glyphPx}px;display:flex;align-items:center;justify-content:center;">` +
       iconHtml +
       // z-index nodig: Leaflet zet via `.leaflet-map-pane svg { z-index: 200 }`
       // élke SVG (ook onze glyph, als flex-item) boven een gewoon absolute
@@ -203,7 +224,6 @@ function placeIcon(
       `<span style="position:absolute;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;` +
       `font-family:'Archivo Narrow',sans-serif;font-weight:800;font-size:${tempPx}px;line-height:1;color:#fff;` +
       `text-shadow:0 1px 2px rgba(0,0,0,.55),0 0 3px rgba(0,0,0,.35)${temp < 0 ? ";margin-top:2px" : ""}">${Math.round(temp)}°</span>` +
-      slash +
       `</div>`,
     iconSize: [w, glyphPx],
     iconAnchor: [Math.round(w / 2), Math.round(glyphPx / 2)],
@@ -473,6 +493,10 @@ export default function LiveMap({
   const [maxTemp, setMaxTemp] = useState(40);
   const [minSun, setMinSun] = useState(0);
   const [maxRain, setMaxRain] = useState(15);
+  const [minRain, setMinRain] = useState(0);
+  const [minSnow, setMinSnow] = useState(0);
+  // Max. afstand vanaf de gezochte plaats (10–3000 km); MAX = onbeperkt.
+  const [maxDist, setMaxDist] = useState(FILTER_DIST_MAX);
 
   // Actueel weer + meerdaagse verwachting op de eigen locatie ophalen.
   useEffect(() => {
@@ -585,14 +609,27 @@ export default function LiveMap({
 
   // Filter: max-regen op zijn hoogste stand = geen limiet.
   const effMaxRain = maxRain >= 15 ? Infinity : maxRain;
+  const distLimited = maxDist < FILTER_DIST_MAX;
   const filterActive =
-    minTemp > 0 || maxTemp < 40 || minSun > 0 || maxRain < 15;
-  const passesFilter = (d: DayLite | undefined) =>
+    minTemp > 0 ||
+    maxTemp < 40 ||
+    minSun > 0 ||
+    maxRain < 15 ||
+    minRain > 0 ||
+    minSnow > 0 ||
+    distLimited;
+  // Weer-gebonden voorwaarden (afstand komt er los bij, want die hangt van de
+  // plaats af, niet van de dag).
+  const passesWeather = (d: DayLite | undefined) =>
     !d ||
     (d.tMax >= minTemp &&
       d.tMax <= maxTemp &&
       d.sunHours >= minSun &&
-      d.precip <= effMaxRain);
+      d.precip <= effMaxRain &&
+      d.precip >= minRain &&
+      (d.snow ?? 0) >= minSnow);
+  const passesFilter = (d: DayLite | undefined, distKm = 0) =>
+    passesWeather(d) && (!distLimited || distKm <= maxDist);
 
   // De eigen locatie volgt óók het filter, maar wordt niet grijs — enkel
   // doorgestreept als hij niet voldoet.
@@ -635,6 +672,21 @@ export default function LiveMap({
           onLoading={setLoading}
           onSlowNetwork={setSlowNetworkDetected}
         />
+
+        {/* Omtrekcirkel van de max-afstand vanaf de gezochte plaats. */}
+        {filterActive && distLimited && (
+          <Circle
+            center={[center.lat, center.lon]}
+            radius={maxDist * 1000}
+            interactive={false}
+            pathOptions={{
+              color: ACCENT,
+              weight: 2,
+              dashArray: "6 6",
+              fill: false,
+            }}
+          />
+        )}
 
         {/* Langzaam netwerk: boodschap en auto-switch naar favorieten */}
         {slowNetworkDetected && !favoritesOnly && (
@@ -746,7 +798,8 @@ export default function LiveMap({
               .filter(({ city }) => distanceKm(center, city) > 2)
               .map((place) => {
                   const day = step === "now" ? place.days[0] : place.days[step];
-                  const dimmed = filterActive && !passesFilter(day);
+                  const dist = distanceKm(center, place.city);
+                  const dimmed = filterActive && !passesFilter(day, dist);
                   const icon = iconForPlace(place, step, dimmed, MAP_ICON_SCALE);
                   if (!icon) return null;
                   return (
@@ -828,16 +881,17 @@ export default function LiveMap({
         </button>
       )}
 
-      {/* Filterknop, onder het hartje. */}
+      {/* Filterknop, onder het hartje. Rood icoon + rode rand als het filter
+          actief is, zodat meteen duidelijk is dat er een filter aanstaat. */}
       <button
         onClick={() => setShowFilter((v) => !v)}
         aria-label="Filter"
-        className={`absolute z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
+        className={`absolute z-[1000] w-12 h-12 rounded-full bg-surface border-2 flex items-center justify-center stamp-shadow active-press ${
           favorites.length > 0 ? "top-[125px]" : "top-[69px]"
         } right-3 ${
           filterActive
-            ? "bg-primary text-on-primary"
-            : "bg-surface text-primary border-2 border-outline-variant"
+            ? "border-error text-error"
+            : "border-outline-variant text-primary"
         }`}
       >
         <Icon name="tune" filled className="text-[24px]" />
@@ -891,6 +945,12 @@ export default function LiveMap({
           setMinSun={setMinSun}
           maxRain={maxRain}
           setMaxRain={setMaxRain}
+          minRain={minRain}
+          setMinRain={setMinRain}
+          minSnow={minSnow}
+          setMinSnow={setMinSnow}
+          maxDist={maxDist}
+          setMaxDist={setMaxDist}
           onClose={() => setShowFilter(false)}
         />
       )}
@@ -1070,6 +1130,12 @@ function FilterPanel({
   setMinSun,
   maxRain,
   setMaxRain,
+  minRain,
+  setMinRain,
+  minSnow,
+  setMinSnow,
+  maxDist,
+  setMaxDist,
   onClose,
 }: {
   minTemp: number;
@@ -1080,6 +1146,12 @@ function FilterPanel({
   setMinSun: (v: number) => void;
   maxRain: number;
   setMaxRain: (v: number) => void;
+  minRain: number;
+  setMinRain: (v: number) => void;
+  minSnow: number;
+  setMinSnow: (v: number) => void;
+  maxDist: number;
+  setMaxDist: (v: number) => void;
   onClose: () => void;
 }) {
   const reset = () => {
@@ -1087,22 +1159,46 @@ function FilterPanel({
     setMaxTemp(40);
     setMinSun(0);
     setMaxRain(15);
+    setMinRain(0);
+    setMinSnow(0);
+    setMaxDist(FILTER_DIST_MAX);
+  };
+  // Snelkeuzes: zetten de weer-schuifbalken in één tik zodat de kaart net die
+  // plaatsen toont die het gekozen icoon opleveren (afstand blijft ongemoeid).
+  const preset = (kind: "sun" | "rain" | "snow") => {
+    setMinTemp(0);
+    setMaxTemp(40);
+    setMinSun(0);
+    setMaxRain(15);
+    setMinRain(0);
+    setMinSnow(0);
+    if (kind === "sun") {
+      setMinSun(7); // volle zon of "zon met een kleine wolk"
+      setMaxRain(1); // en droog, zodat het zon-icoon blijft
+    } else if (kind === "rain") {
+      setMinRain(1); // vanaf een natte dag verschijnt het regenicoon
+    } else {
+      setMinSnow(1); // vanaf 1 cm sneeuwval verschijnt het sneeuwicoon
+    }
   };
   return (
     <div className="absolute inset-x-0 bottom-0 z-[1100] bg-surface border-t-2 border-outline-variant rounded-t-2xl stamp-shadow max-h-[80%] overflow-y-auto animate-fade-in">
-      <div className="sticky top-0 z-10 flex items-center justify-between px-3 h-14 bg-surface border-b-2 border-outline-variant">
+      <div className="sticky top-0 z-10 flex items-center gap-2 px-3 h-14 bg-surface border-b-2 border-outline-variant">
         <button
           onClick={reset}
-          className="px-3 py-1.5 rounded-lg font-headline-sm text-[16px] uppercase text-primary hover:bg-surface-container-high active-press"
+          className="shrink-0 px-3 py-1.5 rounded-lg font-headline-sm text-[16px] uppercase text-primary hover:bg-surface-container-high active-press"
         >
           Reset
         </button>
-        <span className="font-headline-md text-headline-md uppercase tracking-wide flex items-center gap-1.5">
-          <Icon name="tune" filled className="text-primary text-[24px]" /> Filter
-        </span>
+        {/* Presets: zon / regen / sneeuw — het weericoon zelf als knop. */}
+        <div className="flex items-center gap-1.5">
+          <PresetButton glyph="sky_0" label="Zon" onClick={() => preset("sun")} />
+          <PresetButton glyph="rain_2" label="Regen" onClick={() => preset("rain")} />
+          <PresetButton glyph="snow_2" label="Sneeuw" onClick={() => preset("snow")} />
+        </div>
         <button
           onClick={onClose}
-          className="px-5 py-1.5 rounded-lg bg-primary text-on-primary font-headline-sm text-[16px] uppercase active-press"
+          className="ml-auto shrink-0 px-5 py-1.5 rounded-lg bg-primary text-on-primary font-headline-sm text-[16px] uppercase active-press"
         >
           OK
         </button>
@@ -1145,6 +1241,16 @@ function FilterPanel({
 
         <GroupLabel>Regen</GroupLabel>
         <FilterRow
+          title="Min. regen"
+          info="Zoek juist naar regen: plaatsen met mínder regen dan dit vervagen. 1 mm+ = een natte dag."
+          display={`${minRain} mm`}
+          value={minRain}
+          min={0}
+          max={15}
+          step={1}
+          onChange={setMinRain}
+        />
+        <FilterRow
           title="Max. regen"
           info="Totale regen over de hele dag. 0 mm = droog · 1–2 mm = een spatje · 5 mm+ = echt nat. Plaatsen met méér regen vervagen."
           display={maxRain >= 15 ? "alles" : `${maxRain} mm`}
@@ -1154,8 +1260,55 @@ function FilterPanel({
           step={1}
           onChange={setMaxRain}
         />
+
+        <GroupLabel>Sneeuw</GroupLabel>
+        <FilterRow
+          title="Min. sneeuw"
+          info="Zoek naar sneeuw: plaatsen met mínder sneeuwval dan dit vervagen. 1 cm+ = een besneeuwde dag."
+          display={`${minSnow} cm`}
+          value={minSnow}
+          min={0}
+          max={20}
+          step={1}
+          onChange={setMinSnow}
+        />
+
+        <GroupLabel>Afstand</GroupLabel>
+        <FilterRow
+          title="Max. afstand"
+          info="Toon enkel plaatsen binnen deze straal vanaf de gezochte plaats. Er wordt een cirkel op de kaart getekend."
+          display={maxDist >= FILTER_DIST_MAX ? "onbeperkt" : `${maxDist} km`}
+          value={maxDist}
+          min={FILTER_DIST_MIN}
+          max={FILTER_DIST_MAX}
+          step={10}
+          onChange={setMaxDist}
+        />
       </div>
     </div>
+  );
+}
+
+/** Preset-knop in de filter-header: het weericoon zelf als ronde knop. */
+function PresetButton({
+  glyph,
+  label,
+  onClick,
+}: {
+  glyph: string;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`Preset: ${label}`}
+      title={label}
+      className="w-9 h-9 shrink-0 rounded-full border-2 border-outline-variant bg-surface flex items-center justify-center hover:bg-surface-container-high active-press"
+    >
+      <Icon name={glyph} className="text-[22px]" />
+    </button>
   );
 }
 

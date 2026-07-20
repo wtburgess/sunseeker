@@ -29,6 +29,7 @@ type DailyForecast = {
   date: string;
   tMax: number;
   precip: number; // mm
+  snow: number; // cm sneeuwval over de hele dag
   precipProb: number; // %
   cloud: number; // % (24-uurs gemiddelde — incl. nacht, niet getoond)
   sunHours: number; // werkelijke zonuren overdag
@@ -82,7 +83,7 @@ const clamp = (v: number, min: number, max: number) =>
 
 /* ── Forecast ophalen (gebatcht + gechunkt) ────────────────────────────── */
 const DAILY_VARS =
-  "temperature_2m_max,precipitation_sum,precipitation_probability_max,cloud_cover_mean,sunshine_duration,daylight_duration,weather_code";
+  "temperature_2m_max,precipitation_sum,snowfall_sum,precipitation_probability_max,cloud_cover_mean,sunshine_duration,daylight_duration,weather_code";
 
 async function fetchForecastChunk(
   points: LatLon[],
@@ -109,6 +110,7 @@ async function fetchForecastChunk(
         date,
         tMax: d.temperature_2m_max[i],
         precip: d.precipitation_sum[i] ?? 0,
+        snow: d.snowfall_sum[i] ?? 0,
         precipProb: d.precipitation_probability_max[i] ?? 0,
         cloud: d.cloud_cover_mean[i] ?? 0,
         sunHours: sunSec / 3600,
@@ -138,6 +140,7 @@ export type DayLite = {
   date: string;
   tMax: number;
   precip: number; // mm over de hele dag
+  snow: number; // cm sneeuwval over de hele dag
   sunHours: number; // zonuren
   sunFraction: number;
   code: number;
@@ -154,6 +157,7 @@ export async function fetchDailies(
       date: d.date,
       tMax: d.tMax,
       precip: d.precip,
+      snow: d.snow,
       sunHours: d.sunHours,
       sunFraction: d.sunFraction,
       code: d.code,
