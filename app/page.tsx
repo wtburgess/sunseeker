@@ -51,6 +51,14 @@ export default function Home() {
     lon: number;
   } | null>(null);
   const [showLegend, setShowLegend] = useState(false);
+  // Werkelijke locatie van het toestel (GPS of IP-benadering) — apart van de
+  // gezochte/gecentreerde plaats, want de afstand in het dagdetail moet altijd
+  // vanaf het toestel gerekend worden, niet vanaf wat in het zoekveld staat.
+  const [deviceLoc, setDeviceLoc] = useState<{
+    name: string;
+    lat: number;
+    lon: number;
+  } | null>(null);
 
   // Terugval als de toestellocatie (GPS) niet beschikbaar is: benaderende
   // locatie via het IP-adres (geen toestemming nodig). Lukt ook dat niet, dan
@@ -61,11 +69,13 @@ export default function Home() {
       setCoords({ lat: ip.lat, lon: ip.lon });
       setQuery(ip.name);
       setPlaceName(ip.name);
+      setDeviceLoc({ name: ip.name, lat: ip.lat, lon: ip.lon });
       setNotice("Locatie bij benadering (via internet) — zet je toestellocatie aan voor meer precisie");
     } else {
       setCoords((c) => c ?? FALLBACK);
       setQuery((q) => q || "Brussel");
       setPlaceName((p) => p || "Brussel");
+      setDeviceLoc((d) => d ?? { name: "Brussel", lat: FALLBACK.lat, lon: FALLBACK.lon });
       setNotice("Geen locatie beschikbaar — typ een plaats of gebruik Brussel");
     }
     setLocating(false);
@@ -84,12 +94,14 @@ export default function Home() {
       async (pos) => {
         const here = { lat: pos.coords.latitude, lon: pos.coords.longitude };
         setCoords(here);
+        setDeviceLoc({ name: "Mijn locatie", lat: here.lat, lon: here.lon });
         setNotice(null);
         setLocating(false);
         const name = await reverseGeocode(here.lat, here.lon).catch(() => null);
         if (name) {
           setQuery(name);
           setPlaceName(name);
+          setDeviceLoc({ name, lat: here.lat, lon: here.lon });
         }
       },
       () => {
@@ -206,7 +218,7 @@ export default function Home() {
           {selected && (
             <CityDetail
               place={selected}
-              reference={currentPlace}
+              reference={deviceLoc}
               isFavorite={isFavorite(favorites, selected)}
               onToggleFavorite={() => toggleFavoritePlace(selected)}
               onOpenLegend={() => setShowLegend(true)}
