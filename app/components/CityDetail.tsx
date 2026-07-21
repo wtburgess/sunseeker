@@ -50,19 +50,17 @@ export function CityDetail({
       ? distanceKm(place, reference)
       : null;
 
-  // Opent de standaard routeplanner met een route van de referentiestad naar
-  // deze bekeken plaats. Op iOS Apple Maps, elders Google Maps (opent de app of
-  // het web). Coördinaten zijn eenduidig, dus geen geocoding nodig.
+  // Opent de standaard routeplanner met een route naar deze bekeken plaats.
+  // We laten het startpunt weg, zodat de routeplanner altijd de huidige locatie
+  // van het toestel als vertrek gebruikt. Op iOS Apple Maps, elders Google Maps.
   const openRoute = () => {
-    if (!reference) return;
-    const from = `${reference.lat},${reference.lon}`;
     const to = `${place.lat},${place.lon}`;
     const isIOS =
       typeof navigator !== "undefined" &&
       /iPad|iPhone|iPod/.test(navigator.userAgent);
     const url = isIOS
-      ? `https://maps.apple.com/?saddr=${from}&daddr=${to}&dirflg=d`
-      : `https://www.google.com/maps/dir/?api=1&origin=${from}&destination=${to}&travelmode=driving`;
+      ? `https://maps.apple.com/?daddr=${to}&dirflg=d`
+      : `https://www.google.com/maps/dir/?api=1&destination=${to}&travelmode=driving`;
     window.open(url, "_blank", "noopener");
   };
   const [days, setDays] = useState<DailyDetail[] | null>(null);
