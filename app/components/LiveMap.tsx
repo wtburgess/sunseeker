@@ -183,21 +183,18 @@ function placeIcon(
   scale = 1,
 ) {
   // Plaatsen die niet aan het filter voldoen: geen vol weericoon meer, maar een
-  // klein dik grijs punt met een streepje erdoor. Dat ontrommelt de kaart flink
-  // en toont toch dat er een (uitgefilterde) plaats zit.
+  // klein grijs puntje. Dat ontrommelt de kaart maximaal en toont toch subtiel
+  // dat er een (uitgefilterde) plaats zit.
   if (dimmed) {
-    const dot = Math.round(13 * scale);
-    const box = dot + 10;
+    const dot = Math.round(7 * scale);
+    const box = dot + 4;
     const c = box / 2;
     const r = dot / 2;
-    const e = r + 3; // streepje net buiten het punt
     return L.divIcon({
       className: "",
       html:
         `<svg width="${box}" height="${box}" viewBox="0 0 ${box} ${box}">` +
-        `<circle cx="${c}" cy="${c}" r="${r}" fill="#9aa0a6"/>` +
-        `<line x1="${c - e}" y1="${c + e}" x2="${c + e}" y2="${c - e}" ` +
-        `stroke="#5f6368" stroke-width="3" stroke-linecap="round"/></svg>`,
+        `<circle cx="${c}" cy="${c}" r="${r}" fill="#9aa0a6"/></svg>`,
       iconSize: [box, box],
       iconAnchor: [Math.round(c), Math.round(c)],
     });
@@ -805,7 +802,11 @@ export default function LiveMap({
               .map((place) => {
                   const day = step === "now" ? place.days[0] : place.days[step];
                   const dist = distanceKm(center, place.city);
-                  const dimmed = filterActive && !passesFilter(day, dist);
+                  // Buiten de afstandscirkel: geen weericoon meer (enkel de naam
+                  // blijft, uit de aparte namen-laag hieronder).
+                  if (distLimited && dist > maxDist) return null;
+                  // Binnen de cirkel maar niet aan het weerfilter: grijs puntje.
+                  const dimmed = filterActive && !passesWeather(day);
                   const icon = iconForPlace(place, step, dimmed, MAP_ICON_SCALE);
                   if (!icon) return null;
                   return (
@@ -887,17 +888,17 @@ export default function LiveMap({
         </button>
       )}
 
-      {/* Filterknop, onder het hartje. Rood icoon + rode rand als het filter
-          actief is, zodat meteen duidelijk is dat er een filter aanstaat. */}
+      {/* Filterknop, onder het hartje. Actief filter = invers: rode vulling met
+          witte streepjes, zodat meteen duidelijk is dat er een filter aanstaat. */}
       <button
         onClick={() => setShowFilter((v) => !v)}
         aria-label="Filter"
-        className={`absolute z-[1000] w-12 h-12 rounded-full bg-surface border-2 flex items-center justify-center stamp-shadow active-press ${
+        className={`absolute z-[1000] w-12 h-12 rounded-full border-2 flex items-center justify-center stamp-shadow active-press ${
           favorites.length > 0 ? "top-[125px]" : "top-[69px]"
         } right-3 ${
           filterActive
-            ? "border-error text-error"
-            : "border-outline-variant text-primary"
+            ? "bg-error border-error text-white"
+            : "bg-surface border-outline-variant text-primary"
         }`}
       >
         <Icon name="tune" filled className="text-[24px]" />
@@ -1189,25 +1190,25 @@ function FilterPanel({
   };
   return (
     <div className="absolute inset-x-0 bottom-0 z-[1100] bg-surface border-t-2 border-outline-variant rounded-t-2xl stamp-shadow max-h-[80%] overflow-y-auto animate-fade-in">
-      <div className="sticky top-0 z-10 flex items-center gap-2 px-3 h-14 bg-surface border-b-2 border-outline-variant">
+      <div className="sticky top-0 z-10 flex items-center gap-1.5 px-3 h-14 bg-surface border-b-2 border-outline-variant">
         <button
           onClick={reset}
-          className="shrink-0 px-3 py-1.5 rounded-lg border-2 border-outline-variant bg-surface font-headline-sm text-[15px] uppercase text-primary hover:bg-surface-container-high active-press"
+          className="shrink-0 px-2.5 py-1 rounded-lg bg-primary text-on-primary font-headline-sm text-[13px] uppercase active-press"
         >
           Reset
         </button>
         {/* Presets: zon / regen / sneeuw — het weericoon zelf als knop. */}
-        <span className="shrink-0 font-headline-sm text-[13px] uppercase tracking-wide text-outline">
+        <span className="shrink-0 ml-3 font-headline-sm text-[16px] font-bold uppercase tracking-wide text-on-surface">
           Presets
         </span>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 ml-2">
           <PresetButton glyph="sky_0" label="Zon" onClick={() => preset("sun")} />
           <PresetButton glyph="rain_2" label="Regen" onClick={() => preset("rain")} />
           <PresetButton glyph="snow_2" label="Sneeuw" onClick={() => preset("snow")} />
         </div>
         <button
           onClick={onClose}
-          className="ml-auto shrink-0 px-4 py-1.5 rounded-lg bg-primary text-on-primary font-headline-sm text-[15px] uppercase active-press"
+          className="ml-auto shrink-0 px-3 py-1 rounded-lg bg-primary text-on-primary font-headline-sm text-[13px] uppercase active-press"
         >
           OK
         </button>
@@ -1216,6 +1217,7 @@ function FilterPanel({
       <div className="py-2">
         <FilterRow
           icon="straighten"
+          title="Afstand"
           info="Toon enkel plaatsen binnen deze straal vanaf de gezochte plaats. Er wordt een cirkel op de kaart getekend."
           display={maxDist >= FILTER_DIST_MAX ? "onbeperkt" : `${maxDist} km`}
           value={maxDist}
@@ -1235,7 +1237,7 @@ function FilterPanel({
 
         <FilterRow
           icon="sky_0"
-          title="Min."
+          title="Min. zonuren"
           info="Aantal uren zon per dag. Vanaf 8 zonuren heb je een goeie dag."
           display={`${minSun} u`}
           value={minSun}
@@ -1247,18 +1249,7 @@ function FilterPanel({
 
         <FilterRow
           icon="rain_2"
-          title="Min."
-          info="Zoek juist naar regen: plaatsen met mínder regen dan dit vervagen. 1 mm+ = een natte dag."
-          display={`${minRain} mm`}
-          value={minRain}
-          min={0}
-          max={15}
-          step={1}
-          onChange={setMinRain}
-        />
-        <FilterRow
-          icon="rain_2"
-          title="Max."
+          title="Max. regen"
           info="Totale regen over de hele dag. 0 mm = droog · 1–2 mm = een spatje · 5 mm+ = echt nat. Plaatsen met méér regen vervagen."
           display={maxRain >= 15 ? "alles" : `${maxRain} mm`}
           value={maxRain}
@@ -1267,10 +1258,21 @@ function FilterPanel({
           step={1}
           onChange={setMaxRain}
         />
+        <FilterRow
+          icon="rain_2"
+          title="Min. regen"
+          info="Zoek juist naar regen: plaatsen met mínder regen dan dit vervagen. 1 mm+ = een natte dag."
+          display={`${minRain} mm`}
+          value={minRain}
+          min={0}
+          max={15}
+          step={1}
+          onChange={setMinRain}
+        />
 
         <FilterRow
           icon="snow_2"
-          title="Min."
+          title="Min. sneeuw"
           info="Zoek naar sneeuw: plaatsen met mínder sneeuwval dan dit vervagen. 1 cm+ = een besneeuwde dag."
           display={`${minSnow} cm`}
           value={minSnow}
@@ -1300,9 +1302,9 @@ function PresetButton({
       onClick={onClick}
       aria-label={`Preset: ${label}`}
       title={label}
-      className="w-10 h-10 shrink-0 rounded-full border-2 border-outline-variant bg-surface flex items-center justify-center hover:bg-surface-container-high active-press"
+      className="w-12 h-12 shrink-0 rounded-full border-2 border-outline-variant bg-surface flex items-center justify-center hover:bg-surface-container-high active-press"
     >
-      <Icon name={glyph} className="text-[26px]" />
+      <Icon name={glyph} className="text-[30px]" />
     </button>
   );
 }
@@ -1340,7 +1342,9 @@ function FilterRow({
     <div className="px-4 py-0.5">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <Icon name={icon} className="shrink-0 text-[26px] text-on-surface-variant" />
+          <span className="shrink-0 w-[26px] flex justify-center">
+            <Icon name={icon} className="text-[26px] text-on-surface-variant" />
+          </span>
           {title && (
             <span className="font-headline-sm text-[18px] uppercase truncate">
               {title}
@@ -1366,17 +1370,21 @@ function FilterRow({
           {info}
         </p>
       )}
-      <input
-        type="range"
-        min={stepped ? 0 : min}
-        max={stepped ? steps!.length - 1 : max}
-        step={stepped ? 1 : step}
-        value={idx}
-        onChange={(e) =>
-          onChange(stepped ? steps![Number(e.target.value)] : Number(e.target.value))
-        }
-        className="mt-0.5 w-full"
-      />
+      {/* Slider springt even ver in als het icoon-slot (26px) + tussenruimte
+          (gap-2 = 8px), zodat het startbolletje op één lijn staat met MIN. TEMP. */}
+      <div className="pl-[34px]">
+        <input
+          type="range"
+          min={stepped ? 0 : min}
+          max={stepped ? steps!.length - 1 : max}
+          step={stepped ? 1 : step}
+          value={idx}
+          onChange={(e) =>
+            onChange(stepped ? steps![Number(e.target.value)] : Number(e.target.value))
+          }
+          className="mt-0.5 w-full"
+        />
+      </div>
     </div>
   );
 }
@@ -1400,13 +1408,15 @@ function TempPair({
   return (
     <div className="px-4 py-0.5">
       <div className="flex items-center gap-2">
-        <Icon
-          name="device_thermostat"
-          className="shrink-0 text-[26px] text-on-surface-variant"
-        />
+        <span className="shrink-0 w-[26px] flex justify-center">
+          <Icon
+            name="device_thermostat"
+            className="text-[26px] text-on-surface-variant"
+          />
+        </span>
         <div className="flex flex-1 gap-4 min-w-0">
           <TempCol
-            label="Min"
+            label="Min. temp"
             display={`${minTemp}°`}
             value={minTemp}
             onChange={setMinTemp}
@@ -1414,7 +1424,7 @@ function TempPair({
             onInfo={() => toggle("min")}
           />
           <TempCol
-            label="Max"
+            label="Max. temp"
             display={maxTemp >= 40 ? "40°+" : `${maxTemp}°`}
             value={maxTemp}
             onChange={setMaxTemp}
@@ -1458,8 +1468,8 @@ function TempCol({
   return (
     <div className="flex-1 min-w-0">
       <div className="flex items-center justify-between gap-1">
-        <div className="flex items-center gap-1 min-w-0">
-          <span className="font-headline-sm text-[17px] uppercase truncate">
+        <div className="flex items-center gap-0.5 min-w-0">
+          <span className="font-headline-sm text-[15px] uppercase truncate">
             {label}
           </span>
           <button
@@ -1470,10 +1480,10 @@ function TempCol({
               infoOpen ? "text-primary" : "text-outline hover:text-primary"
             }`}
           >
-            <Icon name="info" filled={infoOpen} className="text-[18px]" />
+            <Icon name="info" filled={infoOpen} className="text-[17px]" />
           </button>
         </div>
-        <span className="font-headline-sm text-[19px] text-primary shrink-0">
+        <span className="font-headline-sm text-[18px] text-primary shrink-0">
           {display}
         </span>
       </div>
