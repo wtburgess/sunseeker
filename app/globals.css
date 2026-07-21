@@ -102,6 +102,17 @@
 }
 
 /* ── Basis ─────────────────────────────────────────────────────────────── */
+/* De app vult exact het zichtbare venster (root = h-dvh). We blokkeren het
+   scrollen/rubber-banden van het document zelf, zodat op iOS de titelbalk niet
+   wegschuift wanneer je boven de kaart sleept. Interne scroll-zones (daglijst,
+   filter…) behouden hun eigen overflow. */
+html,
+body {
+  height: 100%;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
+
 body {
   background-color: #fff9ee; /* Oatmeal */
   background-image:
@@ -109,7 +120,6 @@ body {
     linear-gradient(rgba(138, 114, 107, 0.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(138, 114, 107, 0.05) 1px, transparent 1px);
   background-size: 20px 20px, 40px 40px, 40px 40px;
-  min-height: 100vh;
   font-family: var(--font-body-md);
   color: var(--color-on-surface);
 }

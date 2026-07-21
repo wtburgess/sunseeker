@@ -6,7 +6,12 @@ import { TopAppBar } from "./components/TopAppBar";
 import { LocationBar } from "./components/LocationBar";
 import { CityDetail } from "./components/CityDetail";
 import { Legend } from "./components/Legend";
-import { geocode, reverseGeocode, type GeocodeResult } from "./lib/geo";
+import {
+  geocode,
+  reverseGeocode,
+  fetchIpLocation,
+  type GeocodeResult,
+} from "./lib/geo";
 import {
   loadFavorites,
   toggleFavorite,
@@ -47,14 +52,31 @@ export default function Home() {
   } | null>(null);
   const [showLegend, setShowLegend] = useState(false);
 
+  // Terugval als de toestellocatie (GPS) niet beschikbaar is: benaderende
+  // locatie via het IP-adres (geen toestemming nodig). Lukt ook dat niet, dan
+  // Brussel als laatste redmiddel.
+  const fallbackToIp = useCallback(async () => {
+    const ip = await fetchIpLocation();
+    if (ip) {
+      setCoords({ lat: ip.lat, lon: ip.lon });
+      setQuery(ip.name);
+      setPlaceName(ip.name);
+      setNotice("Locatie bij benadering (via internet) — zet je toestellocatie aan voor meer precisie");
+    } else {
+      setCoords((c) => c ?? FALLBACK);
+      setQuery((q) => q || "Brussel");
+      setPlaceName((p) => p || "Brussel");
+      setNotice("Geen locatie beschikbaar — typ een plaats of gebruik Brussel");
+    }
+    setLocating(false);
+  }, []);
+
   // Locatie van pc/smartphone inlezen: kaart centreren én de plaatsnaam in het
   // invulveld tonen (net alsof je hem had ingetypt en op Enter gedrukt).
   const useDeviceLocation = useCallback(() => {
     if (!navigator.geolocation) {
-      setCoords((c) => c ?? FALLBACK);
-      setQuery("Brussel");
-      setPlaceName("Brussel");
-      setNotice("Geen toestellocatie beschikbaar — Brussel getoond");
+      setLocating(true);
+      void fallbackToIp();
       return;
     }
     setLocating(true);
@@ -71,15 +93,12 @@ export default function Home() {
         }
       },
       () => {
-        setCoords((c) => c ?? FALLBACK);
-        setQuery((q) => q || "Brussel");
-        setPlaceName((p) => p || "Brussel");
-        setNotice("Geen toegang tot je locatie — typ een plaats of gebruik Brussel");
-        setLocating(false);
+        // GPS geweigerd of niet beschikbaar → benaderen via IP.
+        void fallbackToIp();
       },
       { enableHighAccuracy: true, timeout: 10_000 },
     );
-  }, []);
+  }, [fallbackToIp]);
 
   // Een aangetikt voorstel: coördinaten zijn al bekend, dus meteen de kaart
   // verplaatsen zonder een tweede zoekopdracht.

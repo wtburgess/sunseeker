@@ -117,6 +117,31 @@ export async function reverseGeocode(
   return place || null;
 }
 
+/**
+ * Benaderende locatie via het IP-adres (ipwho.is — gratis, geen sleutel, CORS-
+ * vriendelijk, HTTPS). Stads-nauwkeurig en zónder toestemmingsvraag, handig als
+ * de toestellocatie uitstaat. Geeft null bij mislukking.
+ */
+export async function fetchIpLocation(): Promise<{
+  lat: number;
+  lon: number;
+  name: string;
+} | null> {
+  try {
+    const res = await fetch("https://ipwho.is/");
+    if (!res.ok) return null;
+    const d = await res.json();
+    if (!d || d.success === false || typeof d.latitude !== "number") return null;
+    return {
+      lat: d.latitude,
+      lon: d.longitude,
+      name: d.city || d.region || d.country || "Mijn locatie",
+    };
+  } catch {
+    return null;
+  }
+}
+
 /** Afstand in kilometer tussen twee punten (Haversine). */
 export function distanceKm(a: LatLon, b: LatLon): number {
   const R = 6371;
