@@ -187,6 +187,7 @@ export default function Home() {
           {selected && (
             <CityDetail
               place={selected}
+              reference={currentPlace}
               isFavorite={isFavorite(favorites, selected)}
               onToggleFavorite={() => toggleFavoritePlace(selected)}
               onOpenLegend={() => setShowLegend(true)}

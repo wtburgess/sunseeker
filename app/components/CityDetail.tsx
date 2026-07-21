@@ -9,6 +9,7 @@ import {
   fetchDailyDetail,
   type DailyDetail,
 } from "../lib/weather";
+import { distanceKm } from "../lib/geo";
 
 /** Aantal dagen in het detailoverzicht. */
 const DAYS = 14;
@@ -29,17 +30,41 @@ const nl1 = (n: number) =>
 /** Volledig detailoverzicht per dag voor één plaats (opent over de kaart). */
 export function CityDetail({
   place,
+  reference,
   isFavorite,
   onToggleFavorite,
   onOpenLegend,
   onClose,
 }: {
   place: { name: string; lat: number; lon: number };
+  reference?: { name: string; lat: number; lon: number } | null;
   isFavorite: boolean;
   onToggleFavorite: () => void;
   onOpenLegend: () => void;
   onClose: () => void;
 }) {
+  // Afstand tot de referentiestad (het kaartmiddelpunt / gezochte plaats).
+  // Enkel tonen als die er is én een andere plaats is dan deze.
+  const dist =
+    reference && distanceKm(place, reference) > 0
+      ? distanceKm(place, reference)
+      : null;
+
+  // Opent de standaard routeplanner met een route van de referentiestad naar
+  // deze bekeken plaats. Op iOS Apple Maps, elders Google Maps (opent de app of
+  // het web). Coördinaten zijn eenduidig, dus geen geocoding nodig.
+  const openRoute = () => {
+    if (!reference) return;
+    const from = `${reference.lat},${reference.lon}`;
+    const to = `${place.lat},${place.lon}`;
+    const isIOS =
+      typeof navigator !== "undefined" &&
+      /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const url = isIOS
+      ? `https://maps.apple.com/?saddr=${from}&daddr=${to}&dirflg=d`
+      : `https://www.google.com/maps/dir/?api=1&origin=${from}&destination=${to}&travelmode=driving`;
+    window.open(url, "_blank", "noopener");
+  };
   const [days, setDays] = useState<DailyDetail[] | null>(null);
   const [error, setError] = useState(false);
   // Aangeklikte dag → uur-detail (over de daglijst).
@@ -95,6 +120,24 @@ export function CityDetail({
           <Icon name="info" className="text-[24px] text-primary" />
         </button>
       </div>
+
+      {/* Afstand tot de referentiestad + knop naar de routeplanner. */}
+      {dist != null && reference && (
+        <div className="flex items-center justify-between gap-2 px-3 py-2 shrink-0 border-b-2 border-outline-variant">
+          <span className="text-[15px] text-on-surface-variant">
+            Afstand tot {reference.name}:{" "}
+            <span className="font-semibold text-on-surface">{dist} km</span>
+          </span>
+          <button
+            onClick={openRoute}
+            aria-label={`Route naar ${reference.name}`}
+            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-on-primary font-headline-sm text-[14px] uppercase active-press"
+          >
+            <Icon name="directions" filled className="text-[20px]" />
+            Route
+          </button>
+        </div>
+      )}
 
       {/* Lijst per dag */}
       <div className="flex-grow overflow-y-auto">
