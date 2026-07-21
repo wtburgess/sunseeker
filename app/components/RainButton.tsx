@@ -62,6 +62,7 @@ export function RainButton({
           data={data}
           location={place.name}
           onClose={() => setOpen(false)}
+          topPx={64}
         />
       )}
     </>

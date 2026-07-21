@@ -977,9 +977,15 @@ export default function LiveMap({
         onTogglePlay={() => setPlaying((p) => !p)}
       />
 
-      {/* Regenradar overlay */}
+      {/* Regenradar overlay — zweeft net onder de drie ronde knoppen rechts
+          (die zakken mee als er favorieten zijn, dus het startpunt ook). */}
       {showRainOverlay && (
-        <RainOverlay data={minutelyData} onClose={() => setShowRainOverlay(false)} location={label} />
+        <RainOverlay
+          data={minutelyData}
+          onClose={() => setShowRainOverlay(false)}
+          location={label}
+          topPx={favorites.length > 0 ? 237 : 181}
+        />
       )}
     </div>
   );

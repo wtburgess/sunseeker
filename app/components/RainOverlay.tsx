@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { type MinutelyData } from "../lib/weather";
 
 const LINE = "#5f8091";
@@ -28,10 +28,12 @@ export function RainOverlay({
   data,
   onClose,
   location,
+  topPx,
 }: {
   data: MinutelyData | null;
   onClose: () => void;
   location?: string;
+  topPx?: number; // indien gezet: zweeft bovenaan (net onder de kaartknoppen)
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [subtitle, setSubtitle] = useState("");
@@ -210,11 +212,17 @@ export function RainOverlay({
 
   if (!data) return null;
 
+  // Standaard: vast onderaan (detail-schermen). Met `topPx`: zwevend bovenaan de
+  // kaart, net onder de drie ronde knoppen rechts.
+  const anchor: CSSProperties =
+    topPx != null
+      ? { position: "absolute", top: `${topPx}px` }
+      : { position: "fixed", bottom: "0.75rem" };
+
   return (
     <div
       style={{
-        position: "fixed",
-        bottom: "0.75rem",
+        ...anchor,
         left: "0.75rem",
         right: "0.75rem",
         backgroundColor: "#fff",
