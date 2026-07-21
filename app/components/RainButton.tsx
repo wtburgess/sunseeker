@@ -62,7 +62,10 @@ export function RainButton({
           data={data}
           location={place.name}
           onClose={() => setOpen(false)}
-          topPx={64}
+          // Zelfde schermhoogte als op de kaart. Het detail-scherm begint hoger
+          // (het overdekt ook de zoekbalk, ~95px), en de kaart-overlay zit op
+          // ~161+237. Samen ≈ 332px vanaf de detail-bovenkant.
+          topPx={332}
         />
       )}
     </>
