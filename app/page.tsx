@@ -299,33 +299,25 @@ export default function Home() {
           </div>
         )}
 
-        {/* iOS: hint voor handmatig toevoegen */}
+        {/* iOS: hint voor handmatig toevoegen — native iOS-alert stijl */}
         {showIOSHint && (
-          <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/40 backdrop-blur-sm">
-            <div className="bg-white rounded-2xl w-11/12 max-w-sm shadow-2xl relative">
-              <div className="px-6 py-6 text-center border-b border-gray-200">
-                <h2 className="text-base font-semibold text-black mb-2">
-                  Voeg Sunseeker toe aan je home screen
+          <div className="fixed inset-0 z-[2000] flex items-center justify-center px-8 bg-black/40">
+            <div className="w-[270px] max-w-full overflow-hidden rounded-[14px] bg-[#f7f7f7]/95 backdrop-blur-xl shadow-2xl text-center">
+              <div className="px-4 pt-5 pb-4">
+                <h2 className="text-[17px] font-semibold leading-tight text-black">
+                  Maak een app van SUNSEEKER
                 </h2>
-                <p className="text-sm text-gray-600 leading-relaxed">
-                  Tik het deelknopje en selecteer <strong>"Voeg toe aan home screen"</strong> voor snelle toegang
+                <p className="mt-2 text-[13px] leading-snug text-black/80">
+                  Ga naar de drie puntjes, druk op “Deel”, scroll naar
+                  beneden en selecteer: <strong>Zet op beginscherm</strong>
                 </p>
               </div>
-              <div className="flex">
-                <button
-                  onClick={() => setShowIOSHint(false)}
-                  className="flex-1 px-4 py-3 text-center text-sm text-gray-600 font-medium hover:bg-gray-50 active:bg-gray-100 transition-colors"
-                >
-                  Later
-                </button>
-                <div className="w-px bg-gray-200" />
-                <button
-                  onClick={() => setShowIOSHint(false)}
-                  className="flex-1 px-4 py-3 text-center text-sm text-blue-600 font-semibold hover:bg-gray-50 active:bg-gray-100 transition-colors"
-                >
-                  OK
-                </button>
-              </div>
+              <button
+                onClick={() => setShowIOSHint(false)}
+                className="block w-full border-t border-black/10 py-2.5 text-[17px] font-semibold text-[#007aff] active:bg-black/5"
+              >
+                OK
+              </button>
             </div>
           </div>
         )}
