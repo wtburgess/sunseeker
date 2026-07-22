@@ -1220,7 +1220,7 @@ function FilterPanel({
         </button>
       </div>
 
-      <div className="py-2">
+      <div className="pt-2 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
         <FilterRow
           icon="straighten"
           title="Afstand"
@@ -1377,8 +1377,9 @@ function FilterRow({
         </p>
       )}
       {/* Slider springt even ver in als het icoon-slot (26px) + tussenruimte
-          (gap-2 = 8px), zodat het startbolletje op één lijn staat met MIN. TEMP. */}
-      <div className="pl-[34px]">
+          (gap-2 = 8px), zodat het startbolletje op één lijn staat met MIN. TEMP.
+          Rechts wat marge zodat de max-knop niet tegen de schermrand plakt. */}
+      <div className="pl-[34px] pr-3">
         <input
           type="range"
           min={stepped ? 0 : min}
@@ -1493,15 +1494,18 @@ function TempCol({
           {display}
         </span>
       </div>
-      <input
-        type="range"
-        min={0}
-        max={40}
-        step={1}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="mt-0.5 w-full"
-      />
+      {/* pr-2: max-knop niet tegen de kolom-/schermrand. */}
+      <div className="pr-2">
+        <input
+          type="range"
+          min={0}
+          max={40}
+          step={1}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="mt-0.5 w-full"
+        />
+      </div>
     </div>
   );
 }
