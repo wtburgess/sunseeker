@@ -266,7 +266,7 @@ export default function Home() {
 
         {/* Android: install-prompt */}
         {installPrompt && (
-          <div className="absolute inset-0 flex items-end">
+          <div className="fixed inset-0 z-[2000] flex items-end">
             <div className="w-full bg-surface-container-high border-t border-outline-variant p-4 shadow-2xl rounded-t-3xl">
               <div className="flex items-start gap-3 mb-4">
                 <span className="material-symbols-outlined text-primary text-2xl flex-shrink-0 mt-1">
@@ -301,8 +301,8 @@ export default function Home() {
 
         {/* iOS: hint voor handmatig toevoegen */}
         {showIOSHint && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
-            <div className="bg-white rounded-2xl w-11/12 max-w-sm shadow-lg relative z-51">
+          <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div className="bg-white rounded-2xl w-11/12 max-w-sm shadow-2xl relative">
               <div className="px-6 py-6 text-center border-b border-gray-200">
                 <h2 className="text-base font-semibold text-black mb-2">
                   Voeg Sunseeker toe aan je home screen
