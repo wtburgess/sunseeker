@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Icon } from "./Icon";
 
 type Row = { icon: string; name: string; rule: string };
@@ -77,7 +78,7 @@ function InfoRow({
   icon: string;
   iconColor?: string;
   title: string;
-  text: string;
+  text: ReactNode;
 }) {
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 border-b border-outline-variant">
@@ -155,7 +156,16 @@ export function Legend({ onClose }: { onClose: () => void }) {
         <InfoRow
           icon="tune"
           title="Verfijn de kaart"
-          text="Toon alleen plaatsen die passen bij het weer dat jij zoekt: kies een straal (afstand), een min.- en max.-temperatuur, minimum zonuren, en een minimum of maximum aan regen en sneeuw. Met de presets (zon, regen, sneeuw) zet je alles in één tik goed; Reset wist je keuzes. Plaatsen die niet voldoen vervagen en krijgen een schuine streep — je eigen locatie blijft zichtbaar, maar wordt doorgestreept."
+          text={
+            <>
+              Toon alleen plaatsen die passen bij het weer dat jij zoekt: kies
+              een straal (afstand), een min.- en max.-temperatuur, minimum
+              zonuren, en een minimum of maximum aan regen en sneeuw. Met de{" "}
+              <strong>presets</strong> (zon, regen, sneeuw) zet je alles in één
+              tik goed; Reset wist je keuzes. Plaatsen die niet aan je filter
+              voldoen, vervagen (grijs bolletje).
+            </>
+          }
         />
       </div>
     </div>
