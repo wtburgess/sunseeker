@@ -59,6 +59,8 @@ export default function Home() {
     lat: number;
     lon: number;
   } | null>(null);
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [showIOSHint, setShowIOSHint] = useState(false);
 
   // Terugval als de toestellocatie (GPS) niet beschikbaar is: benaderende
   // locatie via het IP-adres (geen toestemming nodig). Lukt ook dat niet, dan
@@ -172,6 +174,40 @@ export default function Home() {
     useDeviceLocation();
   }, [useDeviceLocation]);
 
+  // Android: beforeinstallprompt event afvangen voor install-prompt.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    window.addEventListener("beforeinstallprompt", handler);
+    return () => window.removeEventListener("beforeinstallprompt", handler);
+  }, []);
+
+  // iOS: hint tonen zolang app niet op home screen staat.
+  useEffect(() => {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    // App staat op home screen als standalone mode actief is (navigator.standalone)
+    // of als display-mode: standalone (moderne browsers)
+    const isStandalone =
+      (navigator as any).standalone === true ||
+      window.matchMedia("(display-mode: standalone)").matches;
+    // Hint tonen als iOS EN niet standalone
+    if (isIOS && !isStandalone) {
+      setShowIOSHint(true);
+    }
+  }, []);
+
+  const handleInstallAndroid = async () => {
+    if (installPrompt) {
+      installPrompt.prompt();
+      const { outcome } = await installPrompt.userChoice;
+      if (outcome === "accepted") {
+        setInstallPrompt(null);
+      }
+    }
+  };
+
   return (
     <div className="h-dvh w-full flex items-center justify-center md:p-6">
       {/* Smartphone-kader: op desktop een beperkt telefoon-venster i.p.v.
@@ -227,6 +263,66 @@ export default function Home() {
           )}
         </div>
         {showLegend && <Legend onClose={() => setShowLegend(false)} />}
+
+        {/* Android: install-prompt */}
+        {installPrompt && (
+          <div className="absolute inset-0 flex items-end">
+            <div className="w-full bg-surface-container-high border-t border-outline-variant p-4 shadow-2xl rounded-t-3xl">
+              <div className="flex items-start gap-3 mb-4">
+                <span className="material-symbols-outlined text-primary text-2xl flex-shrink-0 mt-1">
+                  home_screen_search
+                </span>
+                <div className="flex-1">
+                  <p className="font-label-lg text-label-lg text-on-surface font-medium">
+                    Voeg Sunseeker toe aan je home screen
+                  </p>
+                  <p className="text-on-surface-variant text-label-md mt-1">
+                    Snelle toegang zonder app store
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setInstallPrompt(null)}
+                  className="flex-1 px-4 py-2.5 rounded-lg border border-outline text-on-surface font-label-lg hover:bg-surface-variant active:bg-surface-variant transition-colors"
+                >
+                  Later
+                </button>
+                <button
+                  onClick={handleInstallAndroid}
+                  className="flex-1 px-4 py-2.5 rounded-lg bg-primary text-on-primary font-label-lg hover:bg-primary/90 active:bg-primary/80 transition-colors"
+                >
+                  Installeren
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* iOS: hint voor handmatig toevoegen */}
+        {showIOSHint && (
+          <div className="absolute inset-0 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm">
+            <div className="bg-surface-container-high rounded-3xl p-6 max-w-xs shadow-2xl">
+              <div className="flex justify-center mb-4">
+                <span className="material-symbols-outlined text-primary text-5xl">
+                  share
+                </span>
+              </div>
+              <h2 className="text-headline-sm text-on-surface text-center mb-2 font-medium">
+                Voeg Sunseeker toe aan je home screen
+              </h2>
+              <p className="text-body-md text-on-surface-variant text-center mb-6">
+                Tik het deelknopje en selecteer <strong>"Voeg toe aan home screen"</strong>
+              </p>
+              <button
+                onClick={() => setShowIOSHint(false)}
+                className="w-full px-4 py-2.5 rounded-lg bg-primary text-on-primary font-label-lg hover:bg-primary/90 active:bg-primary/80 transition-colors"
+              >
+                Begrepen
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
