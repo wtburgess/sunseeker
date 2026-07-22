@@ -320,7 +320,6 @@ export default function Home() {
                     <>Druk nu onderaan op het deel-icoon (drie puntjes)</>
                   )}
                   , scroll naar beneden en selecteer:{" "}
-                  <strong>Zet op beginscherm</strong>.{" "}
                   <strong>Zet op beginscherm</strong> en voeg toe.
                 </p>
               </div>
