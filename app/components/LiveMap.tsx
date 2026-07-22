@@ -1240,10 +1240,11 @@ function FilterPanel({
           <p className="px-4 pb-2 text-[13px] leading-snug text-on-surface-variant">
             Toon alleen plaatsen die passen bij het weer dat jij zoekt: kies een
             straal (afstand), een min.- en max.-temperatuur, minimum zonuren, en
-            een minimum of maximum aan regen en sneeuw. Met de presets (zon,
-            regen, sneeuw) zet je alles in één tik goed; Reset wist je keuzes.
-            Plaatsen die niet voldoen vervagen en krijgen een schuine streep —
-            je eigen locatie blijft zichtbaar, maar wordt doorgestreept.
+            een minimum of maximum aan regen en sneeuw. Met de{" "}
+            <strong>presets</strong> (zon, regen, sneeuw) zet je alles in één tik
+            goed; Reset wist je keuzes. Plaatsen die niet aan je filter voldoen,
+            vervagen en krijgen een schuine streep — je eigen locatie blijft
+            zichtbaar, maar wordt doorgestreept.
           </p>
         )}
 
