@@ -308,8 +308,9 @@ export default function Home() {
                   Maak een app van SUNSEEKER
                 </h2>
                 <p className="mt-2 text-[13px] leading-snug text-black/80">
-                  Ga naar de drie puntjes, druk op “Deel”, scroll naar
-                  beneden en selecteer: <strong>Zet op beginscherm</strong>
+                  Ga nu naar de drie puntjes, druk op “Deel”, scroll naar
+                  beneden en selecteer: <strong>Zet op beginscherm</strong>.{" "}
+                  <strong>Zet op beginscherm</strong> en voeg toe.
                 </p>
               </div>
               <button
