@@ -317,7 +317,7 @@ export default function Home() {
                   {iosIsChrome ? (
                     <>Druk nu op de drie puntjes, kies “Deel”</>
                   ) : (
-                    <>Druk nu onderaan op het deel-icoon</>
+                    <>Druk nu onderaan op het deel-icoon (drie puntjes)</>
                   )}
                   , scroll naar beneden en selecteer:{" "}
                   <strong>Zet op beginscherm</strong>.{" "}
