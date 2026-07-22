@@ -1167,6 +1167,7 @@ function FilterPanel({
   setMaxDist: (v: number) => void;
   onClose: () => void;
 }) {
+  const [showHelp, setShowHelp] = useState(false);
   const reset = () => {
     setMinTemp(0);
     setMaxTemp(40);
@@ -1221,6 +1222,31 @@ function FilterPanel({
       </div>
 
       <div className="pt-2 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+        {/* Algemene uitleg over het filter, verborgen achter een kleine (i). */}
+        <button
+          type="button"
+          onClick={() => setShowHelp((v) => !v)}
+          aria-label="Uitleg over het filter"
+          className={`flex items-center gap-1.5 px-4 pb-1 active-press ${
+            showHelp ? "text-primary" : "text-outline hover:text-primary"
+          }`}
+        >
+          <Icon name="info" filled={showHelp} className="text-[22px] shrink-0" />
+          <span className="font-headline-sm text-[13px] uppercase tracking-wide">
+            Wat doet dit filter?
+          </span>
+        </button>
+        {showHelp && (
+          <p className="px-4 pb-2 text-[13px] leading-snug text-on-surface-variant">
+            Toon alleen plaatsen die passen bij het weer dat jij zoekt: kies een
+            straal (afstand), een min.- en max.-temperatuur, minimum zonuren, en
+            een minimum of maximum aan regen en sneeuw. Met de presets (zon,
+            regen, sneeuw) zet je alles in één tik goed; Reset wist je keuzes.
+            Plaatsen die niet voldoen vervagen en krijgen een schuine streep —
+            je eigen locatie blijft zichtbaar, maar wordt doorgestreept.
+          </p>
+        )}
+
         <FilterRow
           icon="straighten"
           title="Afstand"
