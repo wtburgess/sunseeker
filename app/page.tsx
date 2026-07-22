@@ -61,6 +61,9 @@ export default function Home() {
   } | null>(null);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [showIOSHint, setShowIOSHint] = useState(false);
+  // Chrome-op-iOS (CriOS) heeft de deelknop onder het drie-puntjes-menu;
+  // Safari heeft het deel-icoon los in de balk. De instructie verschilt dus.
+  const [iosIsChrome, setIosIsChrome] = useState(false);
 
   // Terugval als de toestellocatie (GPS) niet beschikbaar is: benaderende
   // locatie via het IP-adres (geen toestemming nodig). Lukt ook dat niet, dan
@@ -194,6 +197,9 @@ export default function Home() {
       window.matchMedia("(display-mode: standalone)").matches;
     // Hint tonen als iOS EN niet standalone
     if (isIOS && !isStandalone) {
+      // CriOS = Chrome op iOS, FxiOS = Firefox, EdgiOS = Edge — allemaal met
+      // de deelknop onder een drie-puntjes-menu i.p.v. los in de balk.
+      setIosIsChrome(/CriOS|FxiOS|EdgiOS/.test(navigator.userAgent));
       setShowIOSHint(true);
     }
   }, []);
@@ -308,8 +314,13 @@ export default function Home() {
                   Maak een app van SUNSEEKER
                 </h2>
                 <p className="mt-2 text-[13px] leading-snug text-black/80">
-                  Ga nu naar de drie puntjes, druk op “Deel”, scroll naar
-                  beneden en selecteer: <strong>Zet op beginscherm</strong>.{" "}
+                  {iosIsChrome ? (
+                    <>Druk nu op de drie puntjes, kies “Deel”</>
+                  ) : (
+                    <>Druk nu onderaan op het deel-icoon</>
+                  )}
+                  , scroll naar beneden en selecteer:{" "}
+                  <strong>Zet op beginscherm</strong>.{" "}
                   <strong>Zet op beginscherm</strong> en voeg toe.
                 </p>
               </div>
