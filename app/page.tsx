@@ -301,8 +301,8 @@ export default function Home() {
 
         {/* iOS: hint voor handmatig toevoegen */}
         {showIOSHint && (
-          <div className="absolute inset-0 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm">
-            <div className="bg-surface-container-high rounded-3xl p-6 max-w-xs shadow-2xl">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm">
+            <div className="bg-surface-container-high rounded-3xl p-6 max-w-xs shadow-2xl relative z-51">
               <div className="flex justify-center mb-4">
                 <span className="material-symbols-outlined text-primary text-5xl">
                   share
