@@ -154,8 +154,8 @@ export function Legend({ onClose }: { onClose: () => void }) {
         <SectionTitle>Filter</SectionTitle>
         <InfoRow
           icon="tune"
-          title="Temperatuur, zon en regen"
-          text="Stel een minimum- en maximumtemperatuur, minimum zonuren en een maximum aan regen in. Plaatsen die niet voldoen vervagen en krijgen een schuine streep — je eigen locatie blijft zichtbaar maar wordt wel doorgestreept."
+          title="Verfijn de kaart"
+          text="Toon alleen plaatsen die passen bij het weer dat jij zoekt: kies een straal (afstand), een min.- en max.-temperatuur, minimum zonuren, en een minimum of maximum aan regen en sneeuw. Met de presets (zon, regen, sneeuw) zet je alles in één tik goed; Reset wist je keuzes. Plaatsen die niet voldoen vervagen en krijgen een schuine streep — je eigen locatie blijft zichtbaar, maar wordt doorgestreept."
         />
       </div>
     </div>
