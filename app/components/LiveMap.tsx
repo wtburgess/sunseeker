@@ -1243,8 +1243,7 @@ function FilterPanel({
             een minimum of maximum aan regen en sneeuw. Met de{" "}
             <strong>presets</strong> (zon, regen, sneeuw) zet je alles in één tik
             goed; Reset wist je keuzes. Plaatsen die niet aan je filter voldoen,
-            vervagen en krijgen een schuine streep — je eigen locatie blijft
-            zichtbaar, maar wordt doorgestreept.
+            vervagen (grijs bolletje).
           </p>
         )}
 
