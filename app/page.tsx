@@ -301,25 +301,31 @@ export default function Home() {
 
         {/* iOS: hint voor handmatig toevoegen */}
         {showIOSHint && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30 backdrop-blur-sm">
-            <div className="bg-surface-container-high rounded-3xl p-6 max-w-xs shadow-2xl relative z-51">
-              <div className="flex justify-center mb-4">
-                <span className="material-symbols-outlined text-primary text-5xl">
-                  share
-                </span>
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/20">
+            <div className="bg-white rounded-2xl w-11/12 max-w-sm shadow-lg relative z-51">
+              <div className="px-6 py-6 text-center border-b border-gray-200">
+                <h2 className="text-base font-semibold text-black mb-2">
+                  Voeg Sunseeker toe aan je home screen
+                </h2>
+                <p className="text-sm text-gray-600 leading-relaxed">
+                  Tik het deelknopje en selecteer <strong>"Voeg toe aan home screen"</strong> voor snelle toegang
+                </p>
               </div>
-              <h2 className="text-headline-sm text-on-surface text-center mb-2 font-medium">
-                Voeg Sunseeker toe aan je home screen
-              </h2>
-              <p className="text-body-md text-on-surface-variant text-center mb-6">
-                Tik het deelknopje en selecteer <strong>"Voeg toe aan home screen"</strong>
-              </p>
-              <button
-                onClick={() => setShowIOSHint(false)}
-                className="w-full px-4 py-2.5 rounded-lg bg-primary text-on-primary font-label-lg hover:bg-primary/90 active:bg-primary/80 transition-colors"
-              >
-                Begrepen
-              </button>
+              <div className="flex">
+                <button
+                  onClick={() => setShowIOSHint(false)}
+                  className="flex-1 px-4 py-3 text-center text-sm text-gray-600 font-medium hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                >
+                  Later
+                </button>
+                <div className="w-px bg-gray-200" />
+                <button
+                  onClick={() => setShowIOSHint(false)}
+                  className="flex-1 px-4 py-3 text-center text-sm text-blue-600 font-semibold hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                >
+                  OK
+                </button>
+              </div>
             </div>
           </div>
         )}
