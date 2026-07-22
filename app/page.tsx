@@ -75,7 +75,7 @@ export default function Home() {
       setQuery(ip.name);
       setPlaceName(ip.name);
       setDeviceLoc({ name: ip.name, lat: ip.lat, lon: ip.lon });
-      setNotice("Locatie bij benadering (via internet) — zet je toestellocatie aan voor meer precisie");
+      setNotice("Locatie bij benadering - zet je GPS-locatie aan voor meer precisie");
     } else {
       setCoords((c) => c ?? FALLBACK);
       setQuery((q) => q || "Brussel");
