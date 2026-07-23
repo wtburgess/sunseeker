@@ -114,6 +114,13 @@ export function Legend({ onClose }: { onClose: () => void }) {
         <h2 className="flex-grow font-headline-md text-headline-md uppercase tracking-wide">
           Info
         </h2>
+        <button
+          onClick={onClose}
+          aria-label="Sluiten"
+          className="w-10 h-10 -mr-1 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
+        >
+          <Icon name="close" className="text-[24px]" />
+        </button>
       </div>
 
       <div className="flex-grow overflow-y-auto">

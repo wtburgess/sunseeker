@@ -69,6 +69,13 @@ export function WeatherStory({
             {place.name}
           </h2>
         </div>
+        <button
+          onClick={onClose}
+          aria-label="Sluiten"
+          className="w-10 h-10 -mr-1 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
+        >
+          <Icon name="close" className="text-[24px]" />
+        </button>
       </div>
 
       <div className="flex-grow overflow-y-auto">
