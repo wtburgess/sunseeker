@@ -52,7 +52,12 @@ export default function Home() {
     lon: number;
   } | null>(null);
   const [showLegend, setShowLegend] = useState(false);
-  const [showStory, setShowStory] = useState(false);
+  // Plaats waarvoor het weerpraatje open staat (bovenbalk of detailscherm).
+  const [storyPlace, setStoryPlace] = useState<{
+    name: string;
+    lat: number;
+    lon: number;
+  } | null>(null);
   // Werkelijke locatie van het toestel (GPS of IP-benadering) — apart van de
   // gezochte/gecentreerde plaats, want de afstand in het dagdetail moet altijd
   // vanaf het toestel gerekend worden, niet vanaf wat in het zoekveld staat.
@@ -223,7 +228,13 @@ export default function Home() {
       <div className="relative flex flex-col w-full h-full bg-surface overflow-hidden md:w-[400px] md:h-[min(820px,calc(100dvh_-_3rem))] md:rounded-[2rem] md:border-2 md:border-outline-variant md:shadow-2xl">
         <TopAppBar
           onInfo={() => setShowLegend(true)}
-          onStory={currentPlace ? () => setShowStory(true) : undefined}
+          // In het detailscherm verbergen we deze knop; daar zit een eigen
+          // weerpraatje-knop voor de bekeken plaats.
+          onStory={
+            currentPlace && !selected
+              ? () => setStoryPlace(currentPlace)
+              : undefined
+          }
         />
         {/* Alles onder de titel; het detailoverzicht overdekt straks ook de
             zoekbalk (start net onder de hoofdtitel). */}
@@ -269,14 +280,15 @@ export default function Home() {
               isFavorite={isFavorite(favorites, selected)}
               onToggleFavorite={() => toggleFavoritePlace(selected)}
               onOpenLegend={() => setShowLegend(true)}
+              onStory={() => setStoryPlace(selected)}
               onClose={() => setSelected(null)}
             />
           )}
         </div>
-        {showStory && currentPlace && (
+        {storyPlace && (
           <WeatherStory
-            place={currentPlace}
-            onClose={() => setShowStory(false)}
+            place={storyPlace}
+            onClose={() => setStoryPlace(null)}
           />
         )}
         {showLegend && <Legend onClose={() => setShowLegend(false)} />}

@@ -119,6 +119,20 @@ export function WeatherStory({
                 </p>
               </section>
             )}
+
+            {story.wind && (
+              <section className="pt-4 border-t-2 border-outline-variant">
+                <div className="flex items-center gap-2 mb-2">
+                  <Icon name="air" className="text-[26px] text-primary shrink-0" />
+                  <h3 className="font-headline-sm text-[20px] uppercase tracking-wide text-primary">
+                    Wind
+                  </h3>
+                </div>
+                <p className="text-[16px] leading-relaxed text-on-surface">
+                  {story.wind}
+                </p>
+              </section>
+            )}
           </div>
         )}
       </div>
