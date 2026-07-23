@@ -227,12 +227,12 @@ export default function Home() {
           schermvullend; op mobiel gewoon het volledige scherm. */}
       <div className="relative flex flex-col w-full h-full bg-surface overflow-hidden md:w-[400px] md:h-[min(820px,calc(100dvh_-_3rem))] md:rounded-[2rem] md:border-2 md:border-outline-variant md:shadow-2xl">
         <TopAppBar
-          // In het detailscherm verbergen we beide bovenbalk-knoppen: het
-          // detailscherm heeft zelf een weerpraatje- én een info-knop.
-          onInfo={!selected ? () => setShowLegend(true) : undefined}
+          onInfo={() => setShowLegend(true)}
+          // Weerpraatje volgt de context: in een detailscherm dat van de
+          // bekeken plaats, anders dat van de plaats uit de zoekbalk.
           onStory={
-            currentPlace && !selected
-              ? () => setStoryPlace(currentPlace)
+            selected || currentPlace
+              ? () => setStoryPlace(selected ?? currentPlace)
               : undefined
           }
         />
@@ -279,8 +279,6 @@ export default function Home() {
               reference={deviceLoc}
               isFavorite={isFavorite(favorites, selected)}
               onToggleFavorite={() => toggleFavoritePlace(selected)}
-              onOpenLegend={() => setShowLegend(true)}
-              onStory={() => setStoryPlace(selected)}
               onClose={() => setSelected(null)}
             />
           )}

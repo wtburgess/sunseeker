@@ -33,16 +33,12 @@ export function CityDetail({
   reference,
   isFavorite,
   onToggleFavorite,
-  onOpenLegend,
-  onStory,
   onClose,
 }: {
   place: { name: string; lat: number; lon: number };
   reference?: { name: string; lat: number; lon: number } | null;
   isFavorite: boolean;
   onToggleFavorite: () => void;
-  onOpenLegend: () => void;
-  onStory: () => void;
   onClose: () => void;
 }) {
   // Afstand tot de referentiestad (het kaartmiddelpunt / gezochte plaats).
@@ -113,20 +109,6 @@ export function CityDetail({
         </button>
         <RainButton place={place} />
         <button
-          onClick={onStory}
-          aria-label="Weerpraatje voor deze plaats"
-          className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
-        >
-          <Icon name="forum" className="text-[24px] text-primary" />
-        </button>
-        <button
-          onClick={onOpenLegend}
-          aria-label="Uitleg weericonen"
-          className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
-        >
-          <Icon name="info" className="text-[24px] text-primary" />
-        </button>
-        <button
           onClick={onClose}
           aria-label="Sluiten"
           className="w-10 h-10 -mr-1 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
@@ -178,7 +160,6 @@ export function CityDetail({
           date={openDate}
           isFavorite={isFavorite}
           onToggleFavorite={onToggleFavorite}
-          onOpenLegend={onOpenLegend}
           onClose={() => setOpenDate(null)}
         />
       )}
