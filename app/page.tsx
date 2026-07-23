@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react";
 import { TopAppBar } from "./components/TopAppBar";
 import { LocationBar } from "./components/LocationBar";
 import { CityDetail } from "./components/CityDetail";
+import { WeatherStory } from "./components/WeatherStory";
 import { Legend } from "./components/Legend";
 import {
   geocode,
@@ -51,6 +52,7 @@ export default function Home() {
     lon: number;
   } | null>(null);
   const [showLegend, setShowLegend] = useState(false);
+  const [showStory, setShowStory] = useState(false);
   // Werkelijke locatie van het toestel (GPS of IP-benadering) — apart van de
   // gezochte/gecentreerde plaats, want de afstand in het dagdetail moet altijd
   // vanaf het toestel gerekend worden, niet vanaf wat in het zoekveld staat.
@@ -219,7 +221,10 @@ export default function Home() {
       {/* Smartphone-kader: op desktop een beperkt telefoon-venster i.p.v.
           schermvullend; op mobiel gewoon het volledige scherm. */}
       <div className="relative flex flex-col w-full h-full bg-surface overflow-hidden md:w-[400px] md:h-[min(820px,calc(100dvh_-_3rem))] md:rounded-[2rem] md:border-2 md:border-outline-variant md:shadow-2xl">
-        <TopAppBar onInfo={() => setShowLegend(true)} />
+        <TopAppBar
+          onInfo={() => setShowLegend(true)}
+          onStory={currentPlace ? () => setShowStory(true) : undefined}
+        />
         {/* Alles onder de titel; het detailoverzicht overdekt straks ook de
             zoekbalk (start net onder de hoofdtitel). */}
         <div className="relative flex-grow min-h-0 flex flex-col">
@@ -268,6 +273,12 @@ export default function Home() {
             />
           )}
         </div>
+        {showStory && currentPlace && (
+          <WeatherStory
+            place={currentPlace}
+            onClose={() => setShowStory(false)}
+          />
+        )}
         {showLegend && <Legend onClose={() => setShowLegend(false)} />}
 
         {/* Android: install-prompt */}
