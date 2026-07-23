@@ -122,9 +122,16 @@ export function CityDetail({
         <button
           onClick={onOpenLegend}
           aria-label="Uitleg weericonen"
-          className="w-10 h-10 -mr-1 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
+          className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
         >
           <Icon name="info" className="text-[24px] text-primary" />
+        </button>
+        <button
+          onClick={onClose}
+          aria-label="Sluiten"
+          className="w-10 h-10 -mr-1 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
+        >
+          <Icon name="close" className="text-[24px]" />
         </button>
       </div>
 

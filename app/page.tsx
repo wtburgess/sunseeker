@@ -227,9 +227,9 @@ export default function Home() {
           schermvullend; op mobiel gewoon het volledige scherm. */}
       <div className="relative flex flex-col w-full h-full bg-surface overflow-hidden md:w-[400px] md:h-[min(820px,calc(100dvh_-_3rem))] md:rounded-[2rem] md:border-2 md:border-outline-variant md:shadow-2xl">
         <TopAppBar
-          onInfo={() => setShowLegend(true)}
-          // In het detailscherm verbergen we deze knop; daar zit een eigen
-          // weerpraatje-knop voor de bekeken plaats.
+          // In het detailscherm verbergen we beide bovenbalk-knoppen: het
+          // detailscherm heeft zelf een weerpraatje- én een info-knop.
+          onInfo={!selected ? () => setShowLegend(true) : undefined}
           onStory={
             currentPlace && !selected
               ? () => setStoryPlace(currentPlace)
