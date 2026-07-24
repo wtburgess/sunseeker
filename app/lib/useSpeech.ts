@@ -1,12 +1,29 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
+ * Kwaliteitsscore voor een stem: hoe natuurlijker (Siri/premium/enhanced),
+ * hoe hoger. Op iOS zijn de standaardstemmen "compact"; heeft de gebruiker een
+ * betere Nederlandse stem gedownload (Instellingen → Toegankelijkheid →
+ * Gesproken materiaal → Stemmen), dan verkiezen we die automatisch.
+ */
+function voiceScore(v: SpeechSynthesisVoice): number {
+  const id = `${v.name} ${v.voiceURI}`.toLowerCase();
+  let s = 0;
+  if (id.includes("siri")) s += 5;
+  if (id.includes("premium") || id.includes("neural")) s += 4;
+  if (id.includes("enhanced") || id.includes("verbeterd")) s += 3;
+  if (id.includes("compact")) s -= 2;
+  if (v.lang === "nl-BE") s += 1; // lichte voorkeur voor Belgisch-Nederlands
+  return s;
+}
+
+/**
  * Laat tekst voorlezen met de ingebouwde spraaksynthese van de browser
  * (Web Speech API). Werkt volledig op het toestel — geen server, geen netwerk.
  *
  * - `supported` is pas ná mount betrouwbaar (vermijdt SSR-mismatch).
- * - Stemmen laden asynchroon; we luisteren op `voiceschanged` en kiezen bij
- *   voorkeur een Nederlandse (liefst Belgische) stem.
+ * - Stemmen laden asynchroon; we luisteren op `voiceschanged` en kiezen de
+ *   natuurlijkst klinkende Nederlandse stem (zie `voiceScore`).
  * - iOS vereist dat `speak()` binnen een gebruikersactie (tik) start.
  */
 export function useSpeech(preferredLang = "nl-BE") {
@@ -20,11 +37,11 @@ export function useSpeech(preferredLang = "nl-BE") {
 
     const synth = window.speechSynthesis;
     const pickVoice = () => {
-      const voices = synth.getVoices();
-      voiceRef.current =
-        voices.find((v) => v.lang === preferredLang) ??
-        voices.find((v) => v.lang.replace("_", "-").startsWith("nl")) ??
-        null;
+      const dutch = synth
+        .getVoices()
+        .filter((v) => v.lang.replace("_", "-").toLowerCase().startsWith("nl"));
+      dutch.sort((a, b) => voiceScore(b) - voiceScore(a));
+      voiceRef.current = dutch[0] ?? null;
     };
     pickVoice();
     synth.addEventListener("voiceschanged", pickVoice);
