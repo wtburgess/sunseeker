@@ -10,9 +10,19 @@ import {
   type DailyDetail,
 } from "../lib/weather";
 import { buildWeatherStory, type WeatherStory as Story } from "../lib/weatherStory";
+import { useSpeech } from "../lib/useSpeech";
 
 /** Aantal dagen dat we ophalen voor het week-praatje. */
 const DAYS = 7;
+
+/** Symbolen omzetten zodat de spraaksynthese ze natuurlijk uitspreekt. */
+function speakable(s: string): string {
+  return s
+    .replace(/°/g, " graden")
+    .replace(/\bBft\b/g, "beaufort")
+    .replace(/\bmm\b/g, "millimeter")
+    .replace(/%/g, " procent");
+}
 
 /** Weerpraatje over de plaats uit de bovenbalk: vandaag + deze week. */
 export function WeatherStory({
@@ -50,6 +60,24 @@ export function WeatherStory({
 
   const cond = current ? conditionFromCurrent(current) : null;
 
+  const { supported: canSpeak, speaking, toggle, stop } = useSpeech();
+
+  // Voordracht stoppen zodra je van plaats wisselt.
+  useEffect(() => stop, [name, stop]);
+
+  const speakText = story
+    ? speakable(
+        [
+          `Weerpraatje voor ${place.name}.`,
+          `Vandaag. ${story.today}`,
+          story.week ? `Deze week. ${story.week}` : "",
+          story.wind ? `Wind. ${story.wind}` : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+      )
+    : "";
+
   return (
     <div className="absolute inset-0 z-[1300] bg-surface flex flex-col animate-fade-in">
       {/* Kop */}
@@ -69,6 +97,20 @@ export function WeatherStory({
             {place.name}
           </h2>
         </div>
+        {canSpeak && story && (
+          <button
+            onClick={() => toggle(speakText)}
+            aria-label={speaking ? "Stoppen met voorlezen" : "Praatje voorlezen"}
+            aria-pressed={speaking}
+            className={`w-10 h-10 shrink-0 rounded-full border-2 flex items-center justify-center active-press ${
+              speaking
+                ? "bg-primary border-primary text-on-primary"
+                : "border-outline-variant text-primary hover:bg-surface-container-high"
+            }`}
+          >
+            <Icon name={speaking ? "stop" : "volume_up"} className="text-[24px]" />
+          </button>
+        )}
         <button
           onClick={onClose}
           aria-label="Sluiten"
