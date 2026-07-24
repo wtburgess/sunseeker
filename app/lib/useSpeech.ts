@@ -69,15 +69,26 @@ export function useSpeech(preferredLang = "nl-BE") {
       if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
       const synth = window.speechSynthesis;
       synth.cancel(); // eventuele lopende voordracht eerst stoppen
-      const u = new SpeechSynthesisUtterance(text);
-      u.voice = voiceRef.current;
-      u.lang = voiceRef.current?.lang ?? preferredLang;
-      u.rate = 1;
-      u.pitch = 1;
-      u.onend = () => setSpeaking(false);
-      u.onerror = () => setSpeaking(false);
+
+      // In zinnen opdelen: Chrome (Android én desktop) kapt één lange voordracht
+      // na ~15 s af. Korte stukjes na elkaar in de wachtrij omzeilen dat.
+      const chunks = (text.match(/[^.!?]+[.!?]*/g) ?? [text])
+        .map((c) => c.trim())
+        .filter(Boolean);
+      if (chunks.length === 0) return;
+
+      const lang = voiceRef.current?.lang ?? preferredLang;
       setSpeaking(true);
-      synth.speak(u);
+      chunks.forEach((chunk, i) => {
+        const u = new SpeechSynthesisUtterance(chunk);
+        u.voice = voiceRef.current;
+        u.lang = lang;
+        u.rate = 1;
+        u.pitch = 1;
+        u.onerror = () => setSpeaking(false);
+        if (i === chunks.length - 1) u.onend = () => setSpeaking(false);
+        synth.speak(u);
+      });
     },
     [preferredLang],
   );
