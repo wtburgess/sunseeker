@@ -64,7 +64,6 @@ export function WeatherStory({
   const {
     supported: canSpeak,
     speaking,
-    basicVoice,
     voices,
     voiceURI,
     selectVoice,
@@ -75,11 +74,6 @@ export function WeatherStory({
 
   // Voordracht stoppen zodra je van plaats wisselt.
   useEffect(() => stop, [name, stop]);
-
-  // Platform-specifiek instellingen-pad in de tip (WeatherStory rendert enkel
-  // client-side, dus navigator is beschikbaar).
-  const isAndroid =
-    typeof navigator !== "undefined" && /android/i.test(navigator.userAgent);
 
   const speakText = story
     ? speakable(
@@ -238,30 +232,6 @@ export function WeatherStory({
                   />
                 </button>
               </div>
-            )}
-
-            {canSpeak && (
-              <p className="flex items-start gap-1.5 text-[13px] leading-snug text-on-surface-variant">
-                <Icon
-                  name="info"
-                  className="text-[16px] text-primary shrink-0 mt-0.5"
-                />
-                <span>
-                  {isAndroid ? (
-                    <>
-                      Nieuwe stem gekozen in Instellingen → Toegankelijkheid →
-                      Tekst-naar-spraak-uitvoer? Tik op ↻ om ze te vernieuwen.
-                    </>
-                  ) : (
-                    <>
-                      Wijzig je de stem in Instellingen → Toegankelijkheid → Lezen
-                      en spreken → Stemmen? iPhone onthoudt de lijst: tik op ↻, of
-                      sluit Sunseeker volledig en open ze opnieuw om de wijziging
-                      te zien.
-                    </>
-                  )}
-                </span>
-              </p>
             )}
           </div>
         )}
