@@ -60,7 +60,16 @@ export function WeatherStory({
 
   const cond = current ? conditionFromCurrent(current) : null;
 
-  const { supported: canSpeak, speaking, basicVoice, toggle, stop } = useSpeech();
+  const {
+    supported: canSpeak,
+    speaking,
+    basicVoice,
+    voices,
+    voiceURI,
+    selectVoice,
+    toggle,
+    stop,
+  } = useSpeech();
 
   // Voordracht stoppen zodra je van plaats wisselt.
   useEffect(() => stop, [name, stop]);
@@ -183,6 +192,27 @@ export function WeatherStory({
               </section>
             )}
 
+            {canSpeak && voices.length > 1 && (
+              <label className="flex items-center gap-2 text-[14px] text-on-surface-variant">
+                <Icon
+                  name="record_voice_over"
+                  className="text-[20px] text-primary shrink-0"
+                />
+                <span className="shrink-0">Stem</span>
+                <select
+                  value={voiceURI ?? ""}
+                  onChange={(e) => selectVoice(e.target.value)}
+                  className="min-w-0 flex-grow rounded-lg border border-outline-variant bg-surface-container-high px-2 py-1.5 text-[14px] text-on-surface focus:outline-none focus:border-primary"
+                >
+                  {voices.map((v) => (
+                    <option key={v.voiceURI} value={v.voiceURI}>
+                      {v.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
+
             {canSpeak && basicVoice && (
               <p className="flex items-start gap-1.5 text-[13px] leading-snug text-on-surface-variant">
                 <Icon
@@ -192,7 +222,8 @@ export function WeatherStory({
                 <span>
                   Tip: voor een natuurlijkere stem download je een Premium- of
                   Verbeterde stem via Instellingen → Toegankelijkheid → Gesproken
-                  materiaal → Stemmen → Nederlands.
+                  materiaal → Stemmen → Nederlands. Sluit daarna de app volledig
+                  en open ze opnieuw.
                 </span>
               </p>
             )}

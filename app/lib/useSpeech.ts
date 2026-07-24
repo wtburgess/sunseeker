@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+const STORAGE_KEY = "weerpraatje-stem"; // onthoudt de gekozen stem (voiceURI)
+
 /**
  * Kwaliteitsscore voor een stem: hoe natuurlijker (Siri/premium/enhanced),
  * hoe hoger. Op iOS zijn de standaardstemmen "compact"; heeft de gebruiker een
@@ -22,41 +24,67 @@ function voiceScore(v: SpeechSynthesisVoice): number {
  * (Web Speech API). Werkt volledig op het toestel — geen server, geen netwerk.
  *
  * - `supported` is pas ná mount betrouwbaar (vermijdt SSR-mismatch).
- * - Stemmen laden asynchroon; we luisteren op `voiceschanged` en kiezen de
- *   natuurlijkst klinkende Nederlandse stem (zie `voiceScore`).
+ * - `voices` zijn de beschikbare Nederlandse stemmen; met `selectVoice` kiest de
+ *   gebruiker er zelf één (onthouden in localStorage). Zonder keuze pakken we
+ *   automatisch de natuurlijkst klinkende (zie `voiceScore`).
+ * - Stemmen laden asynchroon en iOS cachet de lijst; we her-inventariseren ook
+ *   wanneer de app opnieuw zichtbaar wordt (na een download in Instellingen).
  * - iOS vereist dat `speak()` binnen een gebruikersactie (tik) start.
  */
 export function useSpeech(preferredLang = "nl-BE") {
   const [supported, setSupported] = useState(false);
   const [speaking, setSpeaking] = useState(false);
-  // True wanneer de best beschikbare Nederlandse stem een "compacte" (blikkerige)
-  // stem is → dan tonen we een hint om een betere stem te downloaden.
   const [basicVoice, setBasicVoice] = useState(false);
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [voiceURI, setVoiceURI] = useState<string | null>(null);
+
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
+  // Voorkeur die de gebruiker eerder koos (blijft leidend zolang die stem bestaat).
+  const chosenRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
     setSupported(true);
+    chosenRef.current = window.localStorage.getItem(STORAGE_KEY);
 
     const synth = window.speechSynthesis;
-    const pickVoice = () => {
+    const refresh = () => {
       const dutch = synth
         .getVoices()
-        .filter((v) => v.lang.replace("_", "-").toLowerCase().startsWith("nl"));
-      dutch.sort((a, b) => voiceScore(b) - voiceScore(a));
-      const best = dutch[0] ?? null;
-      voiceRef.current = best;
+        .filter((v) => v.lang.replace("_", "-").toLowerCase().startsWith("nl"))
+        .sort((a, b) => voiceScore(b) - voiceScore(a));
+      setVoices(dutch);
+
+      // Gekozen stem behouden indien nog beschikbaar; anders de beste.
+      const picked =
+        dutch.find((v) => v.voiceURI === chosenRef.current) ?? dutch[0] ?? null;
+      voiceRef.current = picked;
+      setVoiceURI(picked?.voiceURI ?? null);
       setBasicVoice(
-        !!best && /compact/i.test(`${best.name} ${best.voiceURI}`),
+        !!picked && /compact/i.test(`${picked.name} ${picked.voiceURI}`),
       );
     };
-    pickVoice();
-    synth.addEventListener("voiceschanged", pickVoice);
+
+    refresh();
+    synth.addEventListener("voiceschanged", refresh);
+    document.addEventListener("visibilitychange", refresh);
     return () => {
-      synth.removeEventListener("voiceschanged", pickVoice);
+      synth.removeEventListener("voiceschanged", refresh);
+      document.removeEventListener("visibilitychange", refresh);
       synth.cancel();
     };
   }, [preferredLang]);
+
+  /** Kies expliciet een stem; wordt onthouden voor de volgende keer. */
+  const selectVoice = useCallback((uri: string) => {
+    const v = window.speechSynthesis.getVoices().find((x) => x.voiceURI === uri);
+    if (!v) return;
+    chosenRef.current = uri;
+    window.localStorage.setItem(STORAGE_KEY, uri);
+    voiceRef.current = v;
+    setVoiceURI(uri);
+    setBasicVoice(/compact/i.test(`${v.name} ${v.voiceURI}`));
+  }, []);
 
   const stop = useCallback(() => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
@@ -98,5 +126,15 @@ export function useSpeech(preferredLang = "nl-BE") {
     [speaking, speak, stop],
   );
 
-  return { supported, speaking, basicVoice, speak, stop, toggle };
+  return {
+    supported,
+    speaking,
+    basicVoice,
+    voices,
+    voiceURI,
+    selectVoice,
+    speak,
+    stop,
+    toggle,
+  };
 }
