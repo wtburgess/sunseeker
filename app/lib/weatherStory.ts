@@ -178,9 +178,9 @@ function windStory(current: CurrentWeather | null, days: DailyDetail[]): string 
   const baseWind = `Vandaag waait er ${beaufortDesc(today.windBft)} ${windDirPhrase(today.windDir)} (${today.windBft} Bft).`;
 
   if (diff !== 0) {
-    const gevoeld = huigeTemp + diff;
+    const voeltemp = huigeTemp + diff;
     const kouder = diff < 0 ? "kouder" : "warmer";
-    parts.push(`${baseWind} Door de wind voelt het ${Math.abs(diff)}° ${kouder}aan (gevoeld ${gevoeld}°).`);
+    parts.push(`${baseWind} Door de wind voelt het ${Math.abs(diff)}° ${kouder} aan (voeltemperatuur ${voeltemp}°).`);
   } else {
     parts.push(baseWind);
   }
