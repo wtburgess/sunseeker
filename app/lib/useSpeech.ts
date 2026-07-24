@@ -42,38 +42,40 @@ export function useSpeech(preferredLang = "nl-BE") {
   // Voorkeur die de gebruiker eerder koos (blijft leidend zolang die stem bestaat).
   const chosenRef = useRef<string | null>(null);
 
+  /** (Her)inventariseer de Nederlandse stemmen en bepaal de actieve stem. */
+  const refreshVoices = useCallback(() => {
+    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+    const dutch = window.speechSynthesis
+      .getVoices()
+      .filter((v) => v.lang.replace("_", "-").toLowerCase().startsWith("nl"))
+      .sort((a, b) => voiceScore(b) - voiceScore(a));
+    setVoices(dutch);
+
+    // Gekozen stem behouden indien nog beschikbaar; anders de beste.
+    const picked =
+      dutch.find((v) => v.voiceURI === chosenRef.current) ?? dutch[0] ?? null;
+    voiceRef.current = picked;
+    setVoiceURI(picked?.voiceURI ?? null);
+    setBasicVoice(
+      !!picked && /compact/i.test(`${picked.name} ${picked.voiceURI}`),
+    );
+  }, []);
+
   useEffect(() => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
     setSupported(true);
     chosenRef.current = window.localStorage.getItem(STORAGE_KEY);
 
     const synth = window.speechSynthesis;
-    const refresh = () => {
-      const dutch = synth
-        .getVoices()
-        .filter((v) => v.lang.replace("_", "-").toLowerCase().startsWith("nl"))
-        .sort((a, b) => voiceScore(b) - voiceScore(a));
-      setVoices(dutch);
-
-      // Gekozen stem behouden indien nog beschikbaar; anders de beste.
-      const picked =
-        dutch.find((v) => v.voiceURI === chosenRef.current) ?? dutch[0] ?? null;
-      voiceRef.current = picked;
-      setVoiceURI(picked?.voiceURI ?? null);
-      setBasicVoice(
-        !!picked && /compact/i.test(`${picked.name} ${picked.voiceURI}`),
-      );
-    };
-
-    refresh();
-    synth.addEventListener("voiceschanged", refresh);
-    document.addEventListener("visibilitychange", refresh);
+    refreshVoices();
+    synth.addEventListener("voiceschanged", refreshVoices);
+    document.addEventListener("visibilitychange", refreshVoices);
     return () => {
-      synth.removeEventListener("voiceschanged", refresh);
-      document.removeEventListener("visibilitychange", refresh);
+      synth.removeEventListener("voiceschanged", refreshVoices);
+      document.removeEventListener("visibilitychange", refreshVoices);
       synth.cancel();
     };
-  }, [preferredLang]);
+  }, [refreshVoices]);
 
   /** Kies expliciet een stem; wordt onthouden voor de volgende keer. */
   const selectVoice = useCallback((uri: string) => {
@@ -133,6 +135,7 @@ export function useSpeech(preferredLang = "nl-BE") {
     voices,
     voiceURI,
     selectVoice,
+    refreshVoices,
     speak,
     stop,
     toggle,

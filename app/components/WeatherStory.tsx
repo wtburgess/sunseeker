@@ -67,6 +67,7 @@ export function WeatherStory({
     voices,
     voiceURI,
     selectVoice,
+    refreshVoices,
     toggle,
     stop,
   } = useSpeech();
@@ -197,28 +198,41 @@ export function WeatherStory({
               </section>
             )}
 
-            {canSpeak && voices.length > 1 && (
-              <label className="flex items-center gap-2 text-[14px] text-on-surface-variant">
+            {canSpeak && voices.length > 0 && (
+              <div className="flex items-center gap-2 text-[14px] text-on-surface-variant">
                 <Icon
                   name="record_voice_over"
                   className="text-[20px] text-primary shrink-0"
                 />
                 <span className="shrink-0">Stem</span>
-                <select
-                  value={voiceURI ?? ""}
-                  onChange={(e) => selectVoice(e.target.value)}
-                  className="min-w-0 flex-grow rounded-lg border border-outline-variant bg-surface-container-high px-2 py-1.5 text-[14px] text-on-surface focus:outline-none focus:border-primary"
+                {voices.length > 1 ? (
+                  <select
+                    value={voiceURI ?? ""}
+                    onChange={(e) => selectVoice(e.target.value)}
+                    className="min-w-0 flex-grow rounded-lg border border-outline-variant bg-surface-container-high px-2 py-1.5 text-[14px] text-on-surface focus:outline-none focus:border-primary"
+                  >
+                    {voices.map((v) => (
+                      <option key={v.voiceURI} value={v.voiceURI}>
+                        {v.name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="min-w-0 flex-grow truncate">
+                    {voices[0]?.name}
+                  </span>
+                )}
+                <button
+                  onClick={() => refreshVoices()}
+                  aria-label="Stemmen vernieuwen"
+                  className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-surface-container-high active-press"
                 >
-                  {voices.map((v) => (
-                    <option key={v.voiceURI} value={v.voiceURI}>
-                      {v.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  <Icon name="refresh" className="text-[20px]" />
+                </button>
+              </div>
             )}
 
-            {canSpeak && basicVoice && (
+            {canSpeak && (
               <p className="flex items-start gap-1.5 text-[13px] leading-snug text-on-surface-variant">
                 <Icon
                   name="info"
@@ -227,16 +241,15 @@ export function WeatherStory({
                 <span>
                   {isAndroid ? (
                     <>
-                      Tip: voor een natuurlijkere stem kies je een andere engine
-                      of stem via Instellingen → Toegankelijkheid →
-                      Tekst-naar-spraak-uitvoer.
+                      Nieuwe stem gekozen in Instellingen → Toegankelijkheid →
+                      Tekst-naar-spraak-uitvoer? Tik op ↻ om ze te vernieuwen.
                     </>
                   ) : (
                     <>
-                      Tip: voor een natuurlijkere stem download je een Premium- of
-                      Verbeterde stem via Instellingen → Toegankelijkheid → Lezen
-                      en spreken → Stemmen → Nederlands. Sluit daarna de app
-                      volledig en open ze opnieuw.
+                      Wijzig je de stem in Instellingen → Toegankelijkheid → Lezen
+                      en spreken → Stemmen? iPhone onthoudt de lijst: tik op ↻, of
+                      sluit Sunseeker volledig en open ze opnieuw om de wijziging
+                      te zien.
                     </>
                   )}
                 </span>
