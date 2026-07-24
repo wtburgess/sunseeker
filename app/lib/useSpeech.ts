@@ -42,18 +42,27 @@ export function useSpeech(preferredLang = "nl-BE") {
   // Voorkeur die de gebruiker eerder koos (blijft leidend zolang die stem bestaat).
   const chosenRef = useRef<string | null>(null);
 
-  /** (Her)inventariseer de Nederlandse stemmen en bepaal de actieve stem. */
+  /** (Her)inventariseer de stemmen en bepaal de actieve stem. */
   const refreshVoices = useCallback(() => {
     if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
-    const dutch = window.speechSynthesis
-      .getVoices()
+    const all = window.speechSynthesis.getVoices();
+    const dutch = all
       .filter((v) => v.lang.replace("_", "-").toLowerCase().startsWith("nl"))
       .sort((a, b) => voiceScore(b) - voiceScore(a));
-    setVoices(dutch);
 
-    // Gekozen stem behouden indien nog beschikbaar; anders de beste.
+    // Geen Nederlandse stem (bv. Windows met enkel Engelse stemmen)? Toon dan
+    // alle stemmen als terugval, zodat het praatje tóch wordt voorgelezen.
+    const list = dutch.length > 0 ? dutch : all;
+    setVoices(list);
+
+    // Gekozen stem behouden indien nog beschikbaar; anders de beste Nederlandse,
+    // anders de standaardstem, anders de eerste.
     const picked =
-      dutch.find((v) => v.voiceURI === chosenRef.current) ?? dutch[0] ?? null;
+      list.find((v) => v.voiceURI === chosenRef.current) ??
+      dutch[0] ??
+      all.find((v) => v.default) ??
+      list[0] ??
+      null;
     voiceRef.current = picked;
     setVoiceURI(picked?.voiceURI ?? null);
     setBasicVoice(
