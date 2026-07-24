@@ -46,6 +46,14 @@ function windDirPhrase(deg: number): string {
   return dirs[Math.round(deg / 45) % 8];
 }
 
+/** Gevoelstemperatuur door wind: hoe veel kouder voelt het aan? */
+function windChillDiff(temp: number, windBft: number): number {
+  if (windBft <= 1) return 0;
+  if (windBft <= 3) return Math.round(-1 - windBft * 0.3);
+  if (windBft <= 5) return Math.round(-3 - (windBft - 3) * 0.5);
+  return Math.round(-4 - (windBft - 5) * 1);
+}
+
 /** Beaufort → losse omschrijving. */
 function beaufortDesc(bft: number): string {
   if (bft <= 0) return "een vrijwel windstille lucht";
@@ -160,12 +168,22 @@ function weekStory(days: DailyDetail[]): string {
   return parts.join(" ");
 }
 
-/** Stukje over de wind: vandaag (kracht + richting) en de winderigste dag. */
-function windStory(days: DailyDetail[]): string {
+/** Stukje over de wind: vandaag (kracht + richting + gevoelstemp) en de winderigste dag. */
+function windStory(current: CurrentWeather | null, days: DailyDetail[]): string {
   const today = days[0];
-  const parts: string[] = [
-    `Vandaag waait er ${beaufortDesc(today.windBft)} ${windDirPhrase(today.windDir)} (${today.windBft} Bft).`,
-  ];
+  const huigeTemp = current ? Math.round(current.temp) : today.tMax;
+  const diff = windChillDiff(huigeTemp, today.windBft);
+
+  const parts: string[] = [];
+  const baseWind = `Vandaag waait er ${beaufortDesc(today.windBft)} ${windDirPhrase(today.windDir)} (${today.windBft} Bft).`;
+
+  if (diff !== 0) {
+    const gevoeld = huigeTemp + diff;
+    const kouder = diff < 0 ? "kouder" : "warmer";
+    parts.push(`${baseWind} Door de wind voelt het ${Math.abs(diff)}° ${kouder}aan (gevoeld ${gevoeld}°).`);
+  } else {
+    parts.push(baseWind);
+  }
 
   const week = days.slice(0, 7);
   const windiest = [...week].sort((a, b) => b.windBft - a.windBft)[0];
@@ -195,6 +213,6 @@ export function buildWeatherStory(
   return {
     today: todayStory(place, current, days[0]),
     week: weekStory(days),
-    wind: windStory(days),
+    wind: windStory(current, days),
   };
 }
