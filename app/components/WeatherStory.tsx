@@ -221,9 +221,9 @@ export function WeatherStory({
                 />
                 <span>
                   Tip: voor een natuurlijkere stem download je een Premium- of
-                  Verbeterde stem via Instellingen → Toegankelijkheid → Gesproken
-                  materiaal → Stemmen → Nederlands. Sluit daarna de app volledig
-                  en open ze opnieuw.
+                  Verbeterde stem via Instellingen → Toegankelijkheid → Lezen en
+                  spreken → Stemmen → Nederlands. Sluit daarna de app volledig en
+                  open ze opnieuw.
                 </span>
               </p>
             )}
