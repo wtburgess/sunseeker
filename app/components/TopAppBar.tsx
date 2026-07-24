@@ -20,7 +20,7 @@ export function TopAppBar({
             aria-label="Weerpraatje voor deze plaats"
             className="absolute left-2 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full flex items-center justify-center text-primary hover:bg-surface-container-high active-press"
           >
-            <Icon name="chat_bubble" className="text-[26px]" />
+            <Icon name="message" className="text-[26px]" />
           </button>
         )}
         <Icon
