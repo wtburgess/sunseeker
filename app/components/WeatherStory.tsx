@@ -35,6 +35,7 @@ export function WeatherStory({
   const [story, setStory] = useState<Story | null>(null);
   const [current, setCurrent] = useState<CurrentWeather | null>(null);
   const [error, setError] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
   // Op primitieve waarden afhangen (niet het `place`-object, dat elke render een
   // nieuwe identiteit krijgt) → de fetch vuurt enkel bij een échte plaatswissel.
@@ -223,11 +224,18 @@ export function WeatherStory({
                   </span>
                 )}
                 <button
-                  onClick={() => refreshVoices()}
+                  onClick={() => {
+                    setRefreshing(true);
+                    refreshVoices();
+                    setTimeout(() => setRefreshing(false), 700);
+                  }}
                   aria-label="Stemmen vernieuwen"
                   className="w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-primary hover:bg-surface-container-high active-press"
                 >
-                  <Icon name="refresh" className="text-[20px]" />
+                  <Icon
+                    name="refresh"
+                    className={`text-[20px] ${refreshing ? "animate-spin" : ""}`}
+                  />
                 </button>
               </div>
             )}

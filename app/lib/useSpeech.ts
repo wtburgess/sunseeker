@@ -113,8 +113,8 @@ export function useSpeech(preferredLang = "nl-BE") {
         const u = new SpeechSynthesisUtterance(chunk);
         u.voice = voiceRef.current;
         u.lang = lang;
-        u.rate = 1;
-        u.pitch = 1;
+        u.rate = 1.15; // 15% sneller
+        u.pitch = 1.15; // 15% hoger
         u.onerror = () => setSpeaking(false);
         if (i === chunks.length - 1) u.onend = () => setSpeaking(false);
         synth.speak(u);
