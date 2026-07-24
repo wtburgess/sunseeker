@@ -262,7 +262,7 @@ export default function Home() {
           screen_rotation
         </span>
         <p className="font-headline-md text-headline-md uppercase tracking-wide text-primary">
-          Draai je toestel rechtop
+          Draai je toestel rechtop, a.u.b.
         </p>
         <p className="text-on-surface-variant text-body-md max-w-xs">
           Sunseeker werkt het best staand.
