@@ -312,6 +312,19 @@ input[type="range"]::-moz-range-thumb {
   animation: fade-in 0.35s ease-out both;
 }
 
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 .animate-stamp-in {
   animation: stamp-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -396,7 +409,8 @@ input[type="range"]::-moz-range-thumb {
   .animate-pulse-glow,
   .animate-compass-in,
   .animate-wiggle,
-  .animate-float {
+  .animate-float,
+  .animate-slide-up {
     animation: none;
   }
 }

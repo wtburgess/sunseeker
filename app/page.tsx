@@ -26,6 +26,16 @@ export type Coords = { lat: number; lon: number };
 // Terugvallocatie als het toestel geen geolocatie geeft (Brussel).
 const FALLBACK: Coords = { lat: 50.8503, lon: 4.3517 };
 
+// Onthoudt wanneer de installatiebanner weer getoond mag worden (na "Niet nu").
+const INSTALL_SNOOZE_KEY = "install-snooze-until";
+const isInstallSnoozed = () =>
+  Date.now() < Number(localStorage.getItem(INSTALL_SNOOZE_KEY) || 0);
+const snoozeInstall = (days: number) =>
+  localStorage.setItem(
+    INSTALL_SNOOZE_KEY,
+    String(Date.now() + days * 86_400_000),
+  );
+
 // Leaflet heeft `window` nodig → enkel client-side renderen.
 const LiveMap = dynamic(() => import("./components/LiveMap"), {
   ssr: false,
@@ -67,6 +77,7 @@ export default function Home() {
     lon: number;
   } | null>(null);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [showInstall, setShowInstall] = useState(false);
   const [showIOSHint, setShowIOSHint] = useState(false);
   // Chrome-op-iOS (CriOS) heeft de deelknop onder het drie-puntjes-menu;
   // Safari heeft het deel-icoon los in de balk. De instructie verschilt dus.
@@ -184,14 +195,31 @@ export default function Home() {
     useDeviceLocation();
   }, [useDeviceLocation]);
 
-  // Android: beforeinstallprompt event afvangen voor install-prompt.
+  // Android: beforeinstallprompt afvangen. De banner niet meteen tonen (dat
+  // voelt rommelig): even wachten tot de gebruiker de kaart heeft gezien, en
+  // niet opnieuw zeuren als hij net "Niet nu" koos of de app al installeerde.
   useEffect(() => {
-    const handler = (e: Event) => {
+    let timer: ReturnType<typeof setTimeout>;
+    const onPrompt = (e: Event) => {
       e.preventDefault();
       setInstallPrompt(e);
+      const standalone = window.matchMedia("(display-mode: standalone)").matches;
+      if (!standalone && !isInstallSnoozed()) {
+        timer = setTimeout(() => setShowInstall(true), 2500);
+      }
     };
-    window.addEventListener("beforeinstallprompt", handler);
-    return () => window.removeEventListener("beforeinstallprompt", handler);
+    const onInstalled = () => {
+      setShowInstall(false);
+      setInstallPrompt(null);
+      snoozeInstall(3650); // geïnstalleerd → niet meer tonen
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
   }, []);
 
   // iOS: hint tonen zolang app niet op home screen staat.
@@ -212,13 +240,17 @@ export default function Home() {
   }, []);
 
   const handleInstallAndroid = async () => {
-    if (installPrompt) {
-      installPrompt.prompt();
-      const { outcome } = await installPrompt.userChoice;
-      if (outcome === "accepted") {
-        setInstallPrompt(null);
-      }
-    }
+    if (!installPrompt) return;
+    setShowInstall(false); // eigen banner weg; Chrome toont nu z'n eigen dialoog
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    setInstallPrompt(null);
+    if (outcome !== "accepted") snoozeInstall(7); // afgewezen → een week rust
+  };
+
+  const dismissInstall = () => {
+    setShowInstall(false);
+    snoozeInstall(7); // "Niet nu" → een week niet opnieuw tonen
   };
 
   return (
@@ -291,33 +323,44 @@ export default function Home() {
         )}
         {showLegend && <Legend onClose={() => setShowLegend(false)} />}
 
-        {/* Android: install-prompt */}
-        {installPrompt && (
-          <div className="fixed inset-0 z-[2000] flex items-end">
-            <div className="w-full bg-surface-container-high border-t border-outline-variant p-4 shadow-2xl rounded-t-3xl">
-              <div className="flex items-start gap-3 mb-4">
-                <span className="material-symbols-outlined text-primary text-2xl flex-shrink-0 mt-1">
-                  home_screen_search
-                </span>
-                <div className="flex-1">
-                  <p className="font-label-lg text-label-lg text-on-surface font-medium">
-                    Voeg Sunseeker toe aan je home screen
+        {/* Android: install-prompt (verschijnt met vertraging, met backdrop) */}
+        {showInstall && installPrompt && (
+          <div
+            className="fixed inset-0 z-[2000] flex items-end bg-black/40 animate-fade-in"
+            onClick={dismissInstall}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full bg-surface-container-high border-t-2 border-outline-variant p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl rounded-t-3xl animate-slide-up"
+            >
+              <div className="mx-auto -mt-1 mb-4 h-1 w-10 rounded-full bg-outline-variant" />
+              <div className="flex items-center gap-3.5 mb-5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/icon-192.png"
+                  alt="Sunseeker"
+                  className="w-14 h-14 rounded-2xl shadow-md flex-shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="font-headline-sm text-[18px] uppercase tracking-wide text-on-surface leading-tight">
+                    Sunseeker installeren
                   </p>
-                  <p className="text-on-surface-variant text-label-md mt-1">
-                    Snelle toegang zonder app store
+                  <p className="text-on-surface-variant text-label-md mt-0.5 leading-snug">
+                    Op je startscherm, opent als een echte app — geen app store
+                    nodig.
                   </p>
                 </div>
               </div>
               <div className="flex gap-2">
                 <button
-                  onClick={() => setInstallPrompt(null)}
-                  className="flex-1 px-4 py-2.5 rounded-lg border border-outline text-on-surface font-label-lg hover:bg-surface-variant active:bg-surface-variant transition-colors"
+                  onClick={dismissInstall}
+                  className="flex-1 px-4 py-3 rounded-xl border-2 border-outline-variant text-on-surface font-label-lg active-press"
                 >
-                  Later
+                  Niet nu
                 </button>
                 <button
                   onClick={handleInstallAndroid}
-                  className="flex-1 px-4 py-2.5 rounded-lg bg-primary text-on-primary font-label-lg hover:bg-primary/90 active:bg-primary/80 transition-colors"
+                  className="flex-1 px-4 py-3 rounded-xl bg-primary text-on-primary font-label-lg active-press"
                 >
                   Installeren
                 </button>
