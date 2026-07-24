@@ -60,7 +60,7 @@ export function WeatherStory({
 
   const cond = current ? conditionFromCurrent(current) : null;
 
-  const { supported: canSpeak, speaking, toggle, stop } = useSpeech();
+  const { supported: canSpeak, speaking, basicVoice, toggle, stop } = useSpeech();
 
   // Voordracht stoppen zodra je van plaats wisselt.
   useEffect(() => stop, [name, stop]);
@@ -181,6 +181,20 @@ export function WeatherStory({
                   {story.wind}
                 </p>
               </section>
+            )}
+
+            {canSpeak && basicVoice && (
+              <p className="flex items-start gap-1.5 text-[13px] leading-snug text-on-surface-variant">
+                <Icon
+                  name="info"
+                  className="text-[16px] text-primary shrink-0 mt-0.5"
+                />
+                <span>
+                  Tip: voor een natuurlijkere stem download je een Premium- of
+                  Verbeterde stem via Instellingen → Toegankelijkheid → Gesproken
+                  materiaal → Stemmen → Nederlands.
+                </span>
+              </p>
             )}
           </div>
         )}

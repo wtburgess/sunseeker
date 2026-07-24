@@ -29,6 +29,9 @@ function voiceScore(v: SpeechSynthesisVoice): number {
 export function useSpeech(preferredLang = "nl-BE") {
   const [supported, setSupported] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  // True wanneer de best beschikbare Nederlandse stem een "compacte" (blikkerige)
+  // stem is → dan tonen we een hint om een betere stem te downloaden.
+  const [basicVoice, setBasicVoice] = useState(false);
   const voiceRef = useRef<SpeechSynthesisVoice | null>(null);
 
   useEffect(() => {
@@ -41,7 +44,11 @@ export function useSpeech(preferredLang = "nl-BE") {
         .getVoices()
         .filter((v) => v.lang.replace("_", "-").toLowerCase().startsWith("nl"));
       dutch.sort((a, b) => voiceScore(b) - voiceScore(a));
-      voiceRef.current = dutch[0] ?? null;
+      const best = dutch[0] ?? null;
+      voiceRef.current = best;
+      setBasicVoice(
+        !!best && /compact/i.test(`${best.name} ${best.voiceURI}`),
+      );
     };
     pickVoice();
     synth.addEventListener("voiceschanged", pickVoice);
@@ -80,5 +87,5 @@ export function useSpeech(preferredLang = "nl-BE") {
     [speaking, speak, stop],
   );
 
-  return { supported, speaking, speak, stop, toggle };
+  return { supported, speaking, basicVoice, speak, stop, toggle };
 }
