@@ -255,6 +255,19 @@ export default function Home() {
 
   return (
     <div className="h-dvh w-full flex items-center justify-center md:p-6">
+      {/* Liggende stand op de telefoon: melding om rechtop te draaien. Zichtbaar
+          gemaakt via CSS (.orientation-lock) enkel op smalle touch-schermen. */}
+      <div className="orientation-lock fixed inset-0 z-[3000] flex-col items-center justify-center gap-4 bg-surface text-center px-10">
+        <span className="material-symbols-outlined text-primary text-[56px] animate-wiggle">
+          screen_rotation
+        </span>
+        <p className="font-headline-md text-headline-md uppercase tracking-wide text-primary">
+          Draai je toestel rechtop
+        </p>
+        <p className="text-on-surface-variant text-body-md max-w-xs">
+          Sunseeker werkt het best staand.
+        </p>
+      </div>
       {/* Smartphone-kader: op desktop een beperkt telefoon-venster i.p.v.
           schermvullend; op mobiel gewoon het volledige scherm. */}
       <div className="relative flex flex-col w-full h-full bg-surface overflow-hidden md:w-[400px] md:h-[min(820px,calc(100dvh_-_3rem))] md:rounded-[2rem] md:border-2 md:border-outline-variant md:shadow-2xl">
