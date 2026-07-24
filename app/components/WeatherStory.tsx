@@ -74,6 +74,11 @@ export function WeatherStory({
   // Voordracht stoppen zodra je van plaats wisselt.
   useEffect(() => stop, [name, stop]);
 
+  // Platform-specifiek instellingen-pad in de tip (WeatherStory rendert enkel
+  // client-side, dus navigator is beschikbaar).
+  const isAndroid =
+    typeof navigator !== "undefined" && /android/i.test(navigator.userAgent);
+
   const speakText = story
     ? speakable(
         [
@@ -220,10 +225,20 @@ export function WeatherStory({
                   className="text-[16px] text-primary shrink-0 mt-0.5"
                 />
                 <span>
-                  Tip: voor een natuurlijkere stem download je een Premium- of
-                  Verbeterde stem via Instellingen → Toegankelijkheid → Lezen en
-                  spreken → Stemmen → Nederlands. Sluit daarna de app volledig en
-                  open ze opnieuw.
+                  {isAndroid ? (
+                    <>
+                      Tip: voor een natuurlijkere stem kies je een andere engine
+                      of stem via Instellingen → Toegankelijkheid →
+                      Tekst-naar-spraak-uitvoer.
+                    </>
+                  ) : (
+                    <>
+                      Tip: voor een natuurlijkere stem download je een Premium- of
+                      Verbeterde stem via Instellingen → Toegankelijkheid → Lezen
+                      en spreken → Stemmen → Nederlands. Sluit daarna de app
+                      volledig en open ze opnieuw.
+                    </>
+                  )}
                 </span>
               </p>
             )}
