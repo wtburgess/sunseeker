@@ -438,39 +438,42 @@ function MapEngine({
     // het bijladen van de plaatsen; tussentijds bijladen staat uit (introRunning).
     if (!introDone.current) {
       introRunning.current = true;
-      // Continentale start; de locatie blijft het middelpunt.
+      map.invalidateSize();
+      // Bepaal de correcte eind-kadrering NU, bij het opstarten, wanneer de
+      // viewport nog stabiel is (net als de oorspronkelijke, werkende kadrering),
+      // en leg de resulterende zoom vast als vast getal. Op iOS verschuift de
+      // dvh-hoogte daarna (adresbalk in/uit); een late hermeting koos dan een veel
+      // te lage zoom. Door fitBounds + setView(3) in dezelfde tick te doen, is er
+      // geen zichtbare flits van de gekaderde view.
+      map.fitBounds(bounds, { padding: [16, 16], animate: false });
+      const targetZoom = map.getZoom();
       map.setView([center.lat, center.lon], 3, { animate: false });
-      // Kort wachten tot de container zijn echte maat heeft — op mobiel is die vlak
-      // na het opstarten soms nog fout (adresbalk/safe-areas). Pas dán de eind-zoom
-      // berekenen (met dezelfde padding als de kadrering) en er vloeiend heen
-      // vliegen. Anders stopt de vlucht te vroeg en volgt een sprong naar de juiste
-      // zoom. De eind-zoom valt zo samen met de instant-kadrering hieronder.
-      const startTimer = setTimeout(() => {
-        map.invalidateSize();
-        const target = Math.max(
-          4,
-          Math.round(map.getBoundsZoom(bounds, false, L.point(16, 16))),
-        );
-        map.flyTo([center.lat, center.lon], target, { duration: 1.4 });
-      }, 350);
-      // Gegarandeerde afronding, los van animatie-events: ná de vlucht hard op de
-      // rechthoek kaderen en de plaatsen laden. Met de juiste maat is dit dezelfde
-      // view als het eind van de vlucht → geen zichtbare sprong; wordt de animatie
-      // toch onderbroken, dan corrigeert dit alsnog. StrictMode-veilig: introDone
-      // wordt pas hier gezet.
-      const finishTimer = setTimeout(() => {
+      let settled = false;
+      const settle = () => {
+        if (settled) return;
+        // Pas hier "gedaan" markeren (StrictMode-veilig): een afgebroken intro
+        // draait zo opnieuw voor het uiteindelijke middelpunt.
+        settled = true;
         introDone.current = true;
         introRunning.current = false;
-        map.invalidateSize();
-        map.once("moveend", runOnce);
-        map.fitBounds(bounds, { padding: [16, 16], animate: false });
-        setTimeout(runOnce, 500);
-      }, 350 + 1500);
+        runOnce();
+      };
+      // De vlucht meldt zich af met één moveend aan het eind.
+      map.once("moveend", settle);
+      // Vloeiend inzoomen tot de vastgelegde zoom. flyTo animeert ook grote
+      // sprongen netjes (i.t.t. de zoom-drempel van setView/fitBounds).
+      map.flyTo([center.lat, center.lon], targetZoom, { duration: 1.4 });
+      // Vangnet: rondt de vlucht niet af (onderbroken / geen compositing), zet de
+      // eindstaat dan hard met de VASTGELEGDE waarden — géén nieuwe meting.
+      const fallback = setTimeout(() => {
+        if (settled) return;
+        map.setView([center.lat, center.lon], targetZoom, { animate: false });
+        settle();
+      }, 2500);
       return () => {
-        clearTimeout(startTimer);
-        clearTimeout(finishTimer);
+        clearTimeout(fallback);
         introRunning.current = false;
-        map.off("moveend", runOnce);
+        map.off("moveend", settle);
       };
     }
 
