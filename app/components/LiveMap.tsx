@@ -448,45 +448,33 @@ function MapEngine({
       // Eind-zoom meten — maar alleen vertrouwen als de container een echte maat
       // heeft. Bij hoogte ~0 (nog niet uitgekaderd) geeft getBoundsZoom de
       // max-zoom terug; dan vallen we terug op een verstandige regio-zoom (7).
-      const containerH = map.getContainer().clientHeight;
-      const measured = Math.round(map.getBoundsZoom(bounds, false, L.point(16, 16)));
-      const targetZoom =
-        containerH > 100 ? Math.max(4, Math.min(10, measured)) : 7;
-      const startZoom = 2;
-      map.setView([center.lat, center.lon], startZoom, { animate: false });
-      // Tijdelijke diagnose: opstart- en eindwaarden.
       const dbgStart =
         `start h${Math.round(map.getContainer().clientHeight)} ` +
-        `vv${Math.round(window.visualViewport?.height ?? 0)} tz${targetZoom}`;
+        `vv${Math.round(window.visualViewport?.height ?? 0)}`;
       onDebug(dbgStart);
-      let introFinished = false;
-      const finishIntro = () => {
-        if (introFinished) return;
-        introFinished = true;
-        onDebug(`${dbgStart} | eind z${map.getZoom()}`);
-        // Pas hier "gedaan" markeren (StrictMode-veilig): een afgebroken intro
-        // draait zo opnieuw voor het uiteindelijke middelpunt.
-        introDone.current = true;
-        introRunning.current = false;
-        runOnce();
-      };
-      // Van zoom 2 in stapjes van één niveau omhoog. Vlot tot zoom 9; vanaf 10
-      // houden we elke stap ~1 seconde vast (10, 11, 12), zodat het diep-inzoomen
-      // goed zichtbaar is. Traag genoeg zodat iOS elke stap kan hertekenen.
-      void targetZoom; // (nu enkel voor de diagnose-regel; eind-zoom staat vast)
-      const endZoom = 12;
-      let z = startZoom;
+
+      // Intro: begin ingezoomd op de eigen locatie (zoom 10) met de weer-iconen
+      // eromheen, en zoom dan stap voor stap dieper (11, 12) met ~1 seconde per
+      // stap. Zo ziet de gebruiker meteen z'n eigen positie én de nabije iconen.
+      // Bij elke stap laden we de iconen voor die view (i.p.v. pas op het eind).
+      const seq = [10, 11, 12];
+      let i = 0;
       let stepTimer: ReturnType<typeof setTimeout>;
-      const stepOnce = () => {
-        z += 1;
-        map.setView([center.lat, center.lon], z, { animate: false });
-        if (z >= endZoom) {
-          finishIntro();
+      const doStep = () => {
+        map.setView([center.lat, center.lon], seq[i], { animate: false });
+        load(); // iconen voor deze view (bij)laden
+        i += 1;
+        if (i >= seq.length) {
+          onDebug(`${dbgStart} | eind z${map.getZoom()}`);
+          // Pas hier "gedaan" markeren (StrictMode-veilig): een afgebroken intro
+          // draait zo opnieuw voor het uiteindelijke middelpunt.
+          introDone.current = true;
+          introRunning.current = false;
           return;
         }
-        stepTimer = setTimeout(stepOnce, z >= 10 ? 1000 : 250);
+        stepTimer = setTimeout(doStep, 1000);
       };
-      stepTimer = setTimeout(stepOnce, 250);
+      doStep();
       return () => {
         clearTimeout(stepTimer);
         introRunning.current = false;
@@ -558,7 +546,7 @@ export default function LiveMap({
   const [playing, setPlaying] = useState(false);
   // Kaart-verwijzing + actueel zoomniveau (voor de eigen zoombediening).
   const mapRef = useRef<L.Map | null>(null);
-  const [zoom, setZoom] = useState(2);
+  const [zoom, setZoom] = useState(10);
   // Tijdelijke diagnose-regel (iOS-opstartgedrag). Verwijderen zodra opgelost.
   const [dbg, setDbg] = useState("");
   // "Alleen favorieten"-weergave: enkel de bewaarde plaatsen (met hun weer).
@@ -732,7 +720,7 @@ export default function LiveMap({
     <div className="absolute inset-0">
       <MapContainer
         center={[center.lat, center.lon]}
-        zoom={2}
+        zoom={10}
         scrollWheelZoom
         zoomControl={false}
         style={{ height: "100%", width: "100%" }}
