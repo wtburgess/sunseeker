@@ -445,11 +445,15 @@ function MapEngine({
       // i.p.v. een vloeiende flyTo: elke setView(animate:false) is een échte
       // view-reset die iOS betrouwbaar hertekent. Een flyTo-animatie bleef op iOS
       // visueel op de continentale render hangen terwijl de interne zoom al klopte.
-      const targetZoom = Math.max(
-        4,
-        Math.round(map.getBoundsZoom(bounds, false, L.point(16, 16))),
-      );
-      map.setView([center.lat, center.lon], 3, { animate: false });
+      // Eind-zoom meten — maar alleen vertrouwen als de container een echte maat
+      // heeft. Bij hoogte ~0 (nog niet uitgekaderd) geeft getBoundsZoom de
+      // max-zoom terug; dan vallen we terug op een verstandige regio-zoom (7).
+      const containerH = map.getContainer().clientHeight;
+      const measured = Math.round(map.getBoundsZoom(bounds, false, L.point(16, 16)));
+      const targetZoom =
+        containerH > 100 ? Math.max(4, Math.min(10, measured)) : 7;
+      const startZoom = 2;
+      map.setView([center.lat, center.lon], startZoom, { animate: false });
       // Tijdelijke diagnose: opstart- en eindwaarden.
       const dbgStart =
         `start h${Math.round(map.getContainer().clientHeight)} ` +
@@ -466,8 +470,12 @@ function MapEngine({
         introRunning.current = false;
         runOnce();
       };
-      // Snelle stapjes: van zoom 3 telkens één niveau hoger tot de eind-zoom.
-      let z = 3;
+      // Van zoom 2 in stapjes van één niveau naar de eind-zoom, verspreid over
+      // ~2 seconden. Bewust traag genoeg zodat iOS elke stap kan hertekenen —
+      // snelle stapjes bleven daar op de uitgezoomde render hangen.
+      const steps = Math.max(1, targetZoom - startZoom);
+      const interval = Math.round(2000 / steps);
+      let z = startZoom;
       const stepTimer = setInterval(() => {
         z = Math.min(z + 1, targetZoom);
         map.setView([center.lat, center.lon], z, { animate: false });
@@ -475,7 +483,7 @@ function MapEngine({
           clearInterval(stepTimer);
           finishIntro();
         }
-      }, 90);
+      }, interval);
       return () => {
         clearInterval(stepTimer);
         introRunning.current = false;
@@ -547,7 +555,7 @@ export default function LiveMap({
   const [playing, setPlaying] = useState(false);
   // Kaart-verwijzing + actueel zoomniveau (voor de eigen zoombediening).
   const mapRef = useRef<L.Map | null>(null);
-  const [zoom, setZoom] = useState(8);
+  const [zoom, setZoom] = useState(2);
   // Tijdelijke diagnose-regel (iOS-opstartgedrag). Verwijderen zodra opgelost.
   const [dbg, setDbg] = useState("");
   // "Alleen favorieten"-weergave: enkel de bewaarde plaatsen (met hun weer).
@@ -721,7 +729,7 @@ export default function LiveMap({
     <div className="absolute inset-0">
       <MapContainer
         center={[center.lat, center.lon]}
-        zoom={8}
+        zoom={2}
         scrollWheelZoom
         zoomControl={false}
         style={{ height: "100%", width: "100%" }}
