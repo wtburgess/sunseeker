@@ -319,11 +319,13 @@ function MapEngine({
   onLoaded,
   onLoading,
   onSlowNetwork,
+  onDebug,
 }: {
   center: Coords;
   onLoaded: (places: NearbyPlace[]) => void;
   onLoading: (loading: boolean) => void;
   onSlowNetwork: (isSlow: boolean) => void;
+  onDebug: (info: string) => void;
 }) {
   const map = useMap();
   const cache = useRef<Map<string, { cur: CurrentWeather; days: DayLite[] }>>(
@@ -448,12 +450,24 @@ function MapEngine({
       map.fitBounds(bounds, { padding: [16, 16], animate: false });
       const targetZoom = map.getZoom();
       map.setView([center.lat, center.lon], 3, { animate: false });
+      // Tijdelijke diagnose: opstartwaarden vastleggen (container-hoogte,
+      // visual-viewport-hoogte, vastgelegde eind-zoom). Bij afronding vullen we de
+      // eindwaarden aan, zodat zichtbaar wordt of het meten al bij opstart of pas
+      // daarna fout gaat.
+      const dbgStart =
+        `start h${Math.round(map.getContainer().clientHeight)} ` +
+        `vv${Math.round(window.visualViewport?.height ?? 0)} tz${targetZoom}`;
+      onDebug(dbgStart);
       let settled = false;
       const settle = () => {
         if (settled) return;
         // Pas hier "gedaan" markeren (StrictMode-veilig): een afgebroken intro
         // draait zo opnieuw voor het uiteindelijke middelpunt.
         settled = true;
+        onDebug(
+          `${dbgStart} | eind h${Math.round(map.getContainer().clientHeight)} ` +
+            `z${map.getZoom()}`,
+        );
         introDone.current = true;
         introRunning.current = false;
         runOnce();
@@ -485,6 +499,9 @@ function MapEngine({
       clearTimeout(fallback);
       map.off("moveend", runOnce);
     };
+    // onDebug (setDbg) is een stabiele setState-functie; bewust buiten de deps
+    // gehouden. Grootte van de array blijft zo constant (3).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [center, map, load]);
 
   // Debounce-timer opruimen bij unmount.
@@ -540,6 +557,8 @@ export default function LiveMap({
   // Kaart-verwijzing + actueel zoomniveau (voor de eigen zoombediening).
   const mapRef = useRef<L.Map | null>(null);
   const [zoom, setZoom] = useState(3);
+  // Tijdelijke diagnose-regel (iOS-opstartgedrag). Verwijderen zodra opgelost.
+  const [dbg, setDbg] = useState("");
   // "Alleen favorieten"-weergave: enkel de bewaarde plaatsen (met hun weer).
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [favPlaces, setFavPlaces] = useState<FavPlace[]>([]);
@@ -727,6 +746,7 @@ export default function LiveMap({
           onLoaded={setNearby}
           onLoading={setLoading}
           onSlowNetwork={setSlowNetworkDetected}
+          onDebug={setDbg}
         />
 
         {/* Omtrekcirkel van de max-afstand vanaf de gezochte plaats. */}
@@ -1019,6 +1039,13 @@ export default function LiveMap({
         <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-1.5 rounded-full bg-surface/95 border border-outline-variant px-3 py-1 stamp-shadow font-label-sm text-label-sm text-on-surface-variant">
           <Icon name="progress_activity" className="text-base animate-spin" />
           Weer laden…
+        </div>
+      )}
+
+      {/* Tijdelijke diagnose-regel voor het iOS-opstartgedrag. */}
+      {dbg && (
+        <div className="absolute bottom-24 left-2 right-2 z-[2000] rounded bg-black/80 px-2 py-1 font-mono text-[11px] leading-tight text-white pointer-events-none break-all">
+          {dbg} · nu z{zoom}
         </div>
       )}
 
