@@ -470,22 +470,25 @@ function MapEngine({
         introRunning.current = false;
         runOnce();
       };
-      // Van zoom 2 in stapjes van één niveau naar de eind-zoom, verspreid over
-      // ~2 seconden. Bewust traag genoeg zodat iOS elke stap kan hertekenen —
-      // snelle stapjes bleven daar op de uitgezoomde render hangen.
-      const steps = Math.max(1, targetZoom - startZoom);
-      const interval = Math.round(2000 / steps);
+      // Van zoom 2 in stapjes van één niveau omhoog. Vlot tot zoom 9; vanaf 10
+      // houden we elke stap ~1 seconde vast (10, 11, 12), zodat het diep-inzoomen
+      // goed zichtbaar is. Traag genoeg zodat iOS elke stap kan hertekenen.
+      void targetZoom; // (nu enkel voor de diagnose-regel; eind-zoom staat vast)
+      const endZoom = 12;
       let z = startZoom;
-      const stepTimer = setInterval(() => {
-        z = Math.min(z + 1, targetZoom);
+      let stepTimer: ReturnType<typeof setTimeout>;
+      const stepOnce = () => {
+        z += 1;
         map.setView([center.lat, center.lon], z, { animate: false });
-        if (z >= targetZoom) {
-          clearInterval(stepTimer);
+        if (z >= endZoom) {
           finishIntro();
+          return;
         }
-      }, interval);
+        stepTimer = setTimeout(stepOnce, z >= 10 ? 1000 : 250);
+      };
+      stepTimer = setTimeout(stepOnce, 250);
       return () => {
-        clearInterval(stepTimer);
+        clearTimeout(stepTimer);
         introRunning.current = false;
       };
     }
