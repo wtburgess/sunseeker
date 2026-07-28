@@ -614,9 +614,9 @@ export type DailyDetail = {
   tMin: number;
   tMax: number;
   sunHours: number; // zonuren
-  precip: number; // mm
-  precipProb: number; // % kans
-  code: number; // WMO
+  precip: number; // mm — enkel overdag (daglicht-uren), niet 's nachts
+  precipProb: number; // % kans — hoogste overdag
+  code: number; // WMO — representatief voor overdag
   sunFraction: number; // aandeel zon t.o.v. daglengte (0–1) → voor het icoon
   windBft: number; // windkracht (Beaufort)
   windDir: number; // dominante windrichting (graden, waar de wind vandaan komt)
@@ -634,31 +634,84 @@ const DETAIL_VARS =
   "precipitation_probability_max,sunshine_duration,daylight_duration," +
   "weather_code,wind_speed_10m_max,wind_direction_10m_dominant";
 
-/** Haalt de meerdaagse voorspelling met alle detailvelden op voor één plaats. */
+/** Uurvelden om de dagsamenvatting op enkel de daguren te kunnen baseren. */
+const DETAIL_HOURLY_VARS =
+  "precipitation,precipitation_probability,weather_code,is_day";
+
+/**
+ * Haalt de meerdaagse voorspelling met alle detailvelden op voor één plaats.
+ *
+ * De dagsamenvatting (icoon, mm, regenkans) wordt op de **daglicht-uren**
+ * (`is_day = 1`) gebaseerd, niet op het 24-uurs totaal: zo maakt een bui om 2 u
+ * 's nachts van een verder zonnige dag geen "natte dag" meer. Daarvoor halen we
+ * ook de uurdata op — het daily-eindpunt kent geen "overdag-neerslag".
+ */
 export async function fetchDailyDetail(
   point: LatLon,
   days: number,
 ): Promise<DailyDetail[]> {
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
-    `&daily=${DETAIL_VARS}&forecast_days=${days}&timezone=auto`;
+    `&daily=${DETAIL_VARS}&hourly=${DETAIL_HOURLY_VARS}&forecast_days=${days}&timezone=auto`;
 
   const res = await fetch(url);
   if (!res.ok) throw new Error(`Open-Meteo gaf status ${res.status}`);
 
   const data = await res.json();
   const d = data.daily;
+
+  // Uurdata samenvatten per kalenderdag, maar enkel de daglicht-uren meetellen.
+  // Per dag: som van de overdag-neerslag, hoogste regenkans overdag, en de code
+  // van het natste daguur (juist neerslag-type: bui/motregen/onweer…). Op een
+  // droge dag is er geen natte-uur-code, dus nemen we de zwaarste dag-code (die
+  // vangt mist/bewolking op). `timezone=auto` geeft de uren in lokale tijd, dus
+  // de datum staat vooraan in de tijdstring ("2026-07-28T14:00").
+  const h = data.hourly ?? {};
+  const times: string[] = h.time ?? [];
+  const daytime = new Map<
+    string,
+    { precip: number; precipProb: number; wetCode: number; wetPeak: number; dryCode: number }
+  >();
+  for (let i = 0; i < times.length; i++) {
+    if ((h.is_day?.[i] ?? 0) !== 1) continue; // enkel daglicht
+    const date = times[i].slice(0, 10);
+    const p = h.precipitation?.[i] ?? 0;
+    const c = h.weather_code?.[i] ?? 0;
+    const prob = h.precipitation_probability?.[i] ?? 0;
+    const e =
+      daytime.get(date) ??
+      { precip: 0, precipProb: 0, wetCode: 0, wetPeak: -1, dryCode: 0 };
+    e.precip += p;
+    e.precipProb = Math.max(e.precipProb, prob);
+    e.dryCode = Math.max(e.dryCode, c);
+    if (p > e.wetPeak) {
+      e.wetPeak = p;
+      e.wetCode = c;
+    }
+    daytime.set(date, e);
+  }
+
   return d.time.map((date: string, i: number): DailyDetail => {
     const sunSec = d.sunshine_duration[i] ?? 0;
     const dayLight = d.daylight_duration[i] ?? 0;
+    // Overdag-waarden; terugval op het 24-uurs dagtotaal als er (uitzonderlijk)
+    // geen uurdata voor deze dag is.
+    const e = daytime.get(date);
+    const precip = e ? e.precip : d.precipitation_sum[i] ?? 0;
+    const precipProb = e ? e.precipProb : d.precipitation_probability_max[i] ?? 0;
+    const code = e
+      ? e.precip > 0
+        ? e.wetCode
+        : e.dryCode
+      : d.weather_code[i] ?? 0;
     return {
       date,
       tMin: Math.round(d.temperature_2m_min[i]),
       tMax: Math.round(d.temperature_2m_max[i]),
       sunHours: sunSec / 3600,
-      precip: d.precipitation_sum[i] ?? 0,
-      precipProb: d.precipitation_probability_max[i] ?? 0,
-      code: d.weather_code[i] ?? 0,
+      precip,
+      precipProb,
+      code,
       sunFraction: dayLight > 0 ? clamp(sunSec / dayLight, 0, 1) : 0,
       windBft: windToBeaufort(d.wind_speed_10m_max[i] ?? 0),
       windDir: d.wind_direction_10m_dominant[i] ?? 0,
