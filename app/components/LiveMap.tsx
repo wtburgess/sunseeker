@@ -438,38 +438,34 @@ function MapEngine({
     // het bijladen van de plaatsen; tussentijds bijladen staat uit (introRunning).
     if (!introDone.current) {
       introRunning.current = true;
-      // Eind-zoom = de gewone kadrering. Van daaruit eerst instant naar
-      // continentaal (zoom 3), dan met één vloeiende flyTo-glijbeweging inzoomen
-      // op de locatie, die het middelpunt blijft.
-      const target = Math.max(4, Math.round(map.getBoundsZoom(bounds)));
+      // Visuele intro: van continentaal (zoom 3) vloeiend inzoomen op de locatie,
+      // die het middelpunt blijft. Correctheid hangt hier BEWUST niet van af — de
+      // eindstaat wordt los gegarandeerd (zie finishTimer), zodat de kaart nooit
+      // halverwege blijft hangen als de animatie op een toestel wordt onderbroken.
       map.setView([center.lat, center.lon], 3, { animate: false });
-      let doneIntro = false;
-      const finish = () => {
-        if (doneIntro) return;
-        // Pas hier "gedaan" markeren: breekt de intro af doordat het middelpunt
-        // nog verspringt (of door StrictMode's dubbele mount), dan draait hij
-        // opnieuw voor het uiteindelijke middelpunt i.p.v. overgeslagen te worden.
-        doneIntro = true;
+      map.flyTo(
+        [center.lat, center.lon],
+        Math.max(4, Math.round(map.getBoundsZoom(bounds))),
+        { duration: 1.4 },
+      );
+      // Gegarandeerde afronding, los van animatie-events: ná de vlucht sowieso
+      // hard op de rechthoek kaderen en de plaatsen laden. invalidateSize() meet
+      // de container opnieuw — op mobiel kan die bij het opstarten nog de verkeerde
+      // hoogte hebben (adresbalk/safe-areas), wat anders een veel te lage eind-zoom
+      // gaf. StrictMode-veilig: introDone wordt pas hier gezet.
+      const finishTimer = setTimeout(() => {
         introDone.current = true;
         introRunning.current = false;
+        map.invalidateSize();
         map.once("moveend", runOnce);
-        frame();
+        // Instant kaderen (niet geanimeerd): een onderbroken of niet-composietende
+        // animatie kan de kaart anders halverwege (bv. op zoom 3) laten hangen.
+        map.fitBounds(bounds, { padding: [16, 16], animate: false });
         setTimeout(runOnce, 500);
-      };
-      // De vlucht meldt zich af met één moveend aan het eind.
-      map.once("moveend", finish);
-      map.flyTo([center.lat, center.lon], target, { duration: 1.4 });
-      // Vangnet: rondt de vlucht niet af (bv. tab niet zichtbaar → geen frames),
-      // spring dan naar de eindzoom zodat de kaart altijd goed uitkomt.
-      const fallback = setTimeout(() => {
-        if (doneIntro) return;
-        map.setView([center.lat, center.lon], target, { animate: false });
-        finish();
-      }, 2200);
+      }, 1600);
       return () => {
-        clearTimeout(fallback);
+        clearTimeout(finishTimer);
         introRunning.current = false;
-        map.off("moveend", finish);
         map.off("moveend", runOnce);
       };
     }
