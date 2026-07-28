@@ -332,6 +332,10 @@ function MapEngine({
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const slowTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const reqId = useRef(0);
+  // Intro-zoom (continentaal → locatie) mag maar één keer draaien; zolang hij
+  // loopt onderdrukken we het gewone bijladen bij elke tussenliggende zoom-stap.
+  const introDone = useRef(false);
+  const introRunning = useRef(false);
 
   const load = useCallback(async () => {
     const id = ++reqId.current;
@@ -400,8 +404,12 @@ function MapEngine({
 
   // Slepen/zoomen door de gebruiker → herladen (met debounce).
   useMapEvents({
-    moveend: () => schedule(),
-    zoomend: () => schedule(),
+    moveend: () => {
+      if (!introRunning.current) schedule();
+    },
+    zoomend: () => {
+      if (!introRunning.current) schedule();
+    },
   });
 
   // Nieuw middelpunt: kadreren, en pas laden zodra de kaart is uitgekaderd.
@@ -412,20 +420,62 @@ function MapEngine({
       done = true;
       load();
     };
-    const b = rectBounds(center);
-    map.once("moveend", runOnce);
     // Bij de eerste render kan de kaartcontainer nog geen afmetingen hebben;
     // dan berekent fitBounds een verkeerde (max-)zoom. invalidateSize() leest de
     // grootte opnieuw in vlak vóór het kadreren, zodat we altijd het regionale
     // overzicht krijgen i.p.v. volledig ingezoomd te starten.
     map.invalidateSize();
-    map.fitBounds(
-      [
-        [b.south, b.west],
-        [b.north, b.east],
-      ],
-      { padding: [16, 16] },
-    );
+    const b = rectBounds(center);
+    const bounds: [[number, number], [number, number]] = [
+      [b.south, b.west],
+      [b.north, b.east],
+    ];
+    const frame = () => map.fitBounds(bounds, { padding: [16, 16] });
+
+    // Intro (enkel bij het opstarten): van een continentaal overzicht (zoom 3)
+    // in snelle stapjes inzoomen op de locatie, die de hele tijd centraal blijft.
+    // Zo krijg je een duidelijk centraal punt. Daarna de gewone eindkadrering +
+    // het bijladen van de plaatsen; tussentijds bijladen staat uit (introRunning).
+    if (!introDone.current) {
+      introRunning.current = true;
+      // Eind-zoom = de gewone kadrering. Van daaruit eerst instant naar
+      // continentaal (zoom 3), dan met één vloeiende flyTo-glijbeweging inzoomen
+      // op de locatie, die het middelpunt blijft.
+      const target = Math.max(4, Math.round(map.getBoundsZoom(bounds)));
+      map.setView([center.lat, center.lon], 3, { animate: false });
+      let doneIntro = false;
+      const finish = () => {
+        if (doneIntro) return;
+        // Pas hier "gedaan" markeren: breekt de intro af doordat het middelpunt
+        // nog verspringt (of door StrictMode's dubbele mount), dan draait hij
+        // opnieuw voor het uiteindelijke middelpunt i.p.v. overgeslagen te worden.
+        doneIntro = true;
+        introDone.current = true;
+        introRunning.current = false;
+        map.once("moveend", runOnce);
+        frame();
+        setTimeout(runOnce, 500);
+      };
+      // De vlucht meldt zich af met één moveend aan het eind.
+      map.once("moveend", finish);
+      map.flyTo([center.lat, center.lon], target, { duration: 1.4 });
+      // Vangnet: rondt de vlucht niet af (bv. tab niet zichtbaar → geen frames),
+      // spring dan naar de eindzoom zodat de kaart altijd goed uitkomt.
+      const fallback = setTimeout(() => {
+        if (doneIntro) return;
+        map.setView([center.lat, center.lon], target, { animate: false });
+        finish();
+      }, 2200);
+      return () => {
+        clearTimeout(fallback);
+        introRunning.current = false;
+        map.off("moveend", finish);
+        map.off("moveend", runOnce);
+      };
+    }
+
+    map.once("moveend", runOnce);
+    frame();
     // Vangnet als de kaart al op die plek stond (geen beweging → geen moveend).
     const fallback = setTimeout(runOnce, 500);
     return () => {
@@ -486,7 +536,7 @@ export default function LiveMap({
   const [playing, setPlaying] = useState(false);
   // Kaart-verwijzing + actueel zoomniveau (voor de eigen zoombediening).
   const mapRef = useRef<L.Map | null>(null);
-  const [zoom, setZoom] = useState(8);
+  const [zoom, setZoom] = useState(3);
   // "Alleen favorieten"-weergave: enkel de bewaarde plaatsen (met hun weer).
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [favPlaces, setFavPlaces] = useState<FavPlace[]>([]);
@@ -658,7 +708,7 @@ export default function LiveMap({
     <div className="absolute inset-0">
       <MapContainer
         center={[center.lat, center.lon]}
-        zoom={8}
+        zoom={3}
         scrollWheelZoom
         zoomControl={false}
         style={{ height: "100%", width: "100%" }}
