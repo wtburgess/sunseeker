@@ -547,7 +547,7 @@ export default function LiveMap({
   const [playing, setPlaying] = useState(false);
   // Kaart-verwijzing + actueel zoomniveau (voor de eigen zoombediening).
   const mapRef = useRef<L.Map | null>(null);
-  const [zoom, setZoom] = useState(3);
+  const [zoom, setZoom] = useState(8);
   // Tijdelijke diagnose-regel (iOS-opstartgedrag). Verwijderen zodra opgelost.
   const [dbg, setDbg] = useState("");
   // "Alleen favorieten"-weergave: enkel de bewaarde plaatsen (met hun weer).
@@ -721,7 +721,7 @@ export default function LiveMap({
     <div className="absolute inset-0">
       <MapContainer
         center={[center.lat, center.lon]}
-        zoom={3}
+        zoom={8}
         scrollWheelZoom
         zoomControl={false}
         style={{ height: "100%", width: "100%" }}
