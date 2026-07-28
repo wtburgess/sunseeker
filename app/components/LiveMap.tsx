@@ -454,17 +454,22 @@ function MapEngine({
       onDebug(dbgStart);
 
       // Intro: begin ingezoomd op de eigen locatie (zoom 10) met de weer-iconen
-      // eromheen, en zoom dan stap voor stap dieper (11, 12) met ~1 seconde per
-      // stap. Zo ziet de gebruiker meteen z'n eigen positie én de nabije iconen.
-      // Bij elke stap laden we de iconen voor die view (i.p.v. pas op het eind).
-      const seq = [10, 11, 12];
-      let i = 0;
+      // eromheen, en zoom dan geleidelijk verder in tot zoom 12 in kleine
+      // (fractionele) stapjes over ~2 seconden. Een vloeiende flyTo kan niet —
+      // iOS hertekent die zoom-animatie niet betrouwbaar — maar met kleine
+      // discrete setView-stapjes (die wél hertekenen) oogt het toch geleidelijk.
+      const startZoom = 10;
+      const endZoom = 12;
+      const stepSize = 0.25;
+      map.setView([center.lat, center.lon], startZoom, { animate: false });
+      load(); // iconen op de startzoom
+      let zf = startZoom;
       let stepTimer: ReturnType<typeof setTimeout>;
-      const doStep = () => {
-        map.setView([center.lat, center.lon], seq[i], { animate: false });
-        load(); // iconen voor deze view (bij)laden
-        i += 1;
-        if (i >= seq.length) {
+      const stepOnce = () => {
+        zf = Math.min(zf + stepSize, endZoom);
+        map.setView([center.lat, center.lon], zf, { animate: false });
+        if (zf >= endZoom) {
+          load(); // iconen op de eind-zoom
           onDebug(`${dbgStart} | eind z${map.getZoom()}`);
           // Pas hier "gedaan" markeren (StrictMode-veilig): een afgebroken intro
           // draait zo opnieuw voor het uiteindelijke middelpunt.
@@ -472,9 +477,9 @@ function MapEngine({
           introRunning.current = false;
           return;
         }
-        stepTimer = setTimeout(doStep, 1000);
+        stepTimer = setTimeout(stepOnce, 250);
       };
-      doStep();
+      stepTimer = setTimeout(stepOnce, 250);
       return () => {
         clearTimeout(stepTimer);
         introRunning.current = false;
@@ -721,6 +726,7 @@ export default function LiveMap({
       <MapContainer
         center={[center.lat, center.lon]}
         zoom={10}
+        zoomSnap={0.25}
         scrollWheelZoom
         zoomControl={false}
         style={{ height: "100%", width: "100%" }}
