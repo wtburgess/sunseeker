@@ -441,49 +441,44 @@ function MapEngine({
     if (!introDone.current) {
       introRunning.current = true;
       map.invalidateSize();
-      // Eind-zoom meten via getBoundsZoom (zelfde padding als de kadrering) i.p.v.
-      // eerst echt te fitBounden: dat laatste renderde kort op de eind-zoom en dan
-      // met setView(3) terug — die snelle flip liet iOS soms op de continentale
-      // render hangen terwijl de interne zoom al klopte.
+      // Eind-zoom meten (vast getal). We zoomen in met discrete, instant stapjes
+      // i.p.v. een vloeiende flyTo: elke setView(animate:false) is een échte
+      // view-reset die iOS betrouwbaar hertekent. Een flyTo-animatie bleef op iOS
+      // visueel op de continentale render hangen terwijl de interne zoom al klopte.
       const targetZoom = Math.max(
         4,
         Math.round(map.getBoundsZoom(bounds, false, L.point(16, 16))),
       );
       map.setView([center.lat, center.lon], 3, { animate: false });
-      // Tijdelijke diagnose: opstart- en eindwaarden (container-hoogte, visual
-      // viewport-hoogte, vastgelegde eind-zoom, en de zoom na afronding).
+      // Tijdelijke diagnose: opstart- en eindwaarden.
       const dbgStart =
         `start h${Math.round(map.getContainer().clientHeight)} ` +
         `vv${Math.round(window.visualViewport?.height ?? 0)} tz${targetZoom}`;
       onDebug(dbgStart);
-      let settled = false;
-      const settle = () => {
-        if (settled) return;
-        settled = true;
-        // Beeld hard op de eind-zoom zetten. Op iOS bleef na de vlucht soms de
-        // continentale render staan terwijl de interne zoom al klopte; map.stop()
-        // ruimt een lopende animatie (en haar transform) op, setView herzet de view.
-        map.stop();
-        map.setView([center.lat, center.lon], targetZoom, { animate: false });
-        onDebug(
-          `${dbgStart} | eind h${Math.round(map.getContainer().clientHeight)} ` +
-            `z${map.getZoom()}`,
-        );
+      let introFinished = false;
+      const finishIntro = () => {
+        if (introFinished) return;
+        introFinished = true;
+        onDebug(`${dbgStart} | eind z${map.getZoom()}`);
         // Pas hier "gedaan" markeren (StrictMode-veilig): een afgebroken intro
         // draait zo opnieuw voor het uiteindelijke middelpunt.
         introDone.current = true;
         introRunning.current = false;
         runOnce();
       };
-      // De vlucht meldt zich af met één moveend aan het eind; het vangnet dekt het
-      // geval dat die niet (tijdig) vuurt.
-      map.once("moveend", settle);
-      map.flyTo([center.lat, center.lon], targetZoom, { duration: 1.4 });
-      const fallback = setTimeout(settle, 2500);
+      // Snelle stapjes: van zoom 3 telkens één niveau hoger tot de eind-zoom.
+      let z = 3;
+      const stepTimer = setInterval(() => {
+        z = Math.min(z + 1, targetZoom);
+        map.setView([center.lat, center.lon], z, { animate: false });
+        if (z >= targetZoom) {
+          clearInterval(stepTimer);
+          finishIntro();
+        }
+      }, 90);
       return () => {
-        clearTimeout(fallback);
+        clearInterval(stepTimer);
         introRunning.current = false;
-        map.off("moveend", settle);
       };
     }
 
