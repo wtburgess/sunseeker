@@ -438,32 +438,36 @@ function MapEngine({
     // het bijladen van de plaatsen; tussentijds bijladen staat uit (introRunning).
     if (!introDone.current) {
       introRunning.current = true;
-      // Visuele intro: van continentaal (zoom 3) vloeiend inzoomen op de locatie,
-      // die het middelpunt blijft. Correctheid hangt hier BEWUST niet van af — de
-      // eindstaat wordt los gegarandeerd (zie finishTimer), zodat de kaart nooit
-      // halverwege blijft hangen als de animatie op een toestel wordt onderbroken.
+      // Continentale start; de locatie blijft het middelpunt.
       map.setView([center.lat, center.lon], 3, { animate: false });
-      map.flyTo(
-        [center.lat, center.lon],
-        Math.max(4, Math.round(map.getBoundsZoom(bounds))),
-        { duration: 1.4 },
-      );
-      // Gegarandeerde afronding, los van animatie-events: ná de vlucht sowieso
-      // hard op de rechthoek kaderen en de plaatsen laden. invalidateSize() meet
-      // de container opnieuw — op mobiel kan die bij het opstarten nog de verkeerde
-      // hoogte hebben (adresbalk/safe-areas), wat anders een veel te lage eind-zoom
-      // gaf. StrictMode-veilig: introDone wordt pas hier gezet.
+      // Kort wachten tot de container zijn echte maat heeft — op mobiel is die vlak
+      // na het opstarten soms nog fout (adresbalk/safe-areas). Pas dán de eind-zoom
+      // berekenen (met dezelfde padding als de kadrering) en er vloeiend heen
+      // vliegen. Anders stopt de vlucht te vroeg en volgt een sprong naar de juiste
+      // zoom. De eind-zoom valt zo samen met de instant-kadrering hieronder.
+      const startTimer = setTimeout(() => {
+        map.invalidateSize();
+        const target = Math.max(
+          4,
+          Math.round(map.getBoundsZoom(bounds, false, L.point(16, 16))),
+        );
+        map.flyTo([center.lat, center.lon], target, { duration: 1.4 });
+      }, 350);
+      // Gegarandeerde afronding, los van animatie-events: ná de vlucht hard op de
+      // rechthoek kaderen en de plaatsen laden. Met de juiste maat is dit dezelfde
+      // view als het eind van de vlucht → geen zichtbare sprong; wordt de animatie
+      // toch onderbroken, dan corrigeert dit alsnog. StrictMode-veilig: introDone
+      // wordt pas hier gezet.
       const finishTimer = setTimeout(() => {
         introDone.current = true;
         introRunning.current = false;
         map.invalidateSize();
         map.once("moveend", runOnce);
-        // Instant kaderen (niet geanimeerd): een onderbroken of niet-composietende
-        // animatie kan de kaart anders halverwege (bv. op zoom 3) laten hangen.
         map.fitBounds(bounds, { padding: [16, 16], animate: false });
         setTimeout(runOnce, 500);
-      }, 1600);
+      }, 350 + 1500);
       return () => {
+        clearTimeout(startTimer);
         clearTimeout(finishTimer);
         introRunning.current = false;
         map.off("moveend", runOnce);
