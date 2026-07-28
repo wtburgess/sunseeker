@@ -441,19 +441,17 @@ function MapEngine({
     if (!introDone.current) {
       introRunning.current = true;
       map.invalidateSize();
-      // Bepaal de correcte eind-kadrering NU, bij het opstarten, wanneer de
-      // viewport nog stabiel is (net als de oorspronkelijke, werkende kadrering),
-      // en leg de resulterende zoom vast als vast getal. Op iOS verschuift de
-      // dvh-hoogte daarna (adresbalk in/uit); een late hermeting koos dan een veel
-      // te lage zoom. Door fitBounds + setView(3) in dezelfde tick te doen, is er
-      // geen zichtbare flits van de gekaderde view.
-      map.fitBounds(bounds, { padding: [16, 16], animate: false });
-      const targetZoom = map.getZoom();
+      // Eind-zoom meten via getBoundsZoom (zelfde padding als de kadrering) i.p.v.
+      // eerst echt te fitBounden: dat laatste renderde kort op de eind-zoom en dan
+      // met setView(3) terug — die snelle flip liet iOS soms op de continentale
+      // render hangen terwijl de interne zoom al klopte.
+      const targetZoom = Math.max(
+        4,
+        Math.round(map.getBoundsZoom(bounds, false, L.point(16, 16))),
+      );
       map.setView([center.lat, center.lon], 3, { animate: false });
-      // Tijdelijke diagnose: opstartwaarden vastleggen (container-hoogte,
-      // visual-viewport-hoogte, vastgelegde eind-zoom). Bij afronding vullen we de
-      // eindwaarden aan, zodat zichtbaar wordt of het meten al bij opstart of pas
-      // daarna fout gaat.
+      // Tijdelijke diagnose: opstart- en eindwaarden (container-hoogte, visual
+      // viewport-hoogte, vastgelegde eind-zoom, en de zoom na afronding).
       const dbgStart =
         `start h${Math.round(map.getContainer().clientHeight)} ` +
         `vv${Math.round(window.visualViewport?.height ?? 0)} tz${targetZoom}`;
@@ -461,29 +459,27 @@ function MapEngine({
       let settled = false;
       const settle = () => {
         if (settled) return;
-        // Pas hier "gedaan" markeren (StrictMode-veilig): een afgebroken intro
-        // draait zo opnieuw voor het uiteindelijke middelpunt.
         settled = true;
+        // Beeld hard op de eind-zoom zetten. Op iOS bleef na de vlucht soms de
+        // continentale render staan terwijl de interne zoom al klopte; map.stop()
+        // ruimt een lopende animatie (en haar transform) op, setView herzet de view.
+        map.stop();
+        map.setView([center.lat, center.lon], targetZoom, { animate: false });
         onDebug(
           `${dbgStart} | eind h${Math.round(map.getContainer().clientHeight)} ` +
             `z${map.getZoom()}`,
         );
+        // Pas hier "gedaan" markeren (StrictMode-veilig): een afgebroken intro
+        // draait zo opnieuw voor het uiteindelijke middelpunt.
         introDone.current = true;
         introRunning.current = false;
         runOnce();
       };
-      // De vlucht meldt zich af met één moveend aan het eind.
+      // De vlucht meldt zich af met één moveend aan het eind; het vangnet dekt het
+      // geval dat die niet (tijdig) vuurt.
       map.once("moveend", settle);
-      // Vloeiend inzoomen tot de vastgelegde zoom. flyTo animeert ook grote
-      // sprongen netjes (i.t.t. de zoom-drempel van setView/fitBounds).
       map.flyTo([center.lat, center.lon], targetZoom, { duration: 1.4 });
-      // Vangnet: rondt de vlucht niet af (onderbroken / geen compositing), zet de
-      // eindstaat dan hard met de VASTGELEGDE waarden — géén nieuwe meting.
-      const fallback = setTimeout(() => {
-        if (settled) return;
-        map.setView([center.lat, center.lon], targetZoom, { animate: false });
-        settle();
-      }, 2500);
+      const fallback = setTimeout(settle, 2500);
       return () => {
         clearTimeout(fallback);
         introRunning.current = false;
