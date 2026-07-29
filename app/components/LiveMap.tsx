@@ -454,34 +454,36 @@ function MapEngine({
       onDebug(dbgStart);
 
       // Intro: begin ingezoomd op de eigen locatie (zoom 10) met de weer-iconen
-      // eromheen, en zoom dan geleidelijk verder in tot zoom 12 in kleine
-      // (fractionele) stapjes over ~2 seconden. Een vloeiende flyTo kan niet —
-      // iOS hertekent die zoom-animatie niet betrouwbaar — maar met kleine
-      // discrete setView-stapjes (die wél hertekenen) oogt het toch geleidelijk.
-      const startZoom = 10;
-      const endZoom = 12;
-      const stepSize = 0.25;
-      map.setView([center.lat, center.lon], startZoom, { animate: false });
-      load(); // iconen op de startzoom
-      let zf = startZoom;
-      let stepTimer: ReturnType<typeof setTimeout>;
-      const stepOnce = () => {
-        zf = Math.min(zf + stepSize, endZoom);
-        map.setView([center.lat, center.lon], zf, { animate: false });
-        if (zf >= endZoom) {
-          load(); // iconen op de eind-zoom
-          onDebug(`${dbgStart} | eind z${map.getZoom()}`);
-          // Pas hier "gedaan" markeren (StrictMode-veilig): een afgebroken intro
-          // draait zo opnieuw voor het uiteindelijke middelpunt.
-          introDone.current = true;
-          introRunning.current = false;
-          return;
-        }
-        stepTimer = setTimeout(stepOnce, 250);
+      // eromheen. Na een korte hold zoomen we vloeiend in naar 12 met Leaflets
+      // EIGEN zoom-animatie — een CSS-transform, net als de settle van een
+      // pinch-zoom. De sprong is 2 (≤ zoomAnimationThreshold), dus dit animeert
+      // i.p.v. te springen, en die CSS-transform hertekent op iOS wél soepel
+      // (i.t.t. de rAF-gebaseerde flyTo, die daar bleef hangen).
+      map.setView([center.lat, center.lon], 10, { animate: false });
+      load(); // iconen op zoom 10
+      let settled = false;
+      let holdTimer: ReturnType<typeof setTimeout>;
+      let fallbackTimer: ReturnType<typeof setTimeout>;
+      const done = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(fallbackTimer);
+        map.off("zoomend", done);
+        onDebug(`${dbgStart} | eind z${map.getZoom()}`);
+        load(); // iconen op de eind-zoom
+        // Pas hier "gedaan" markeren (StrictMode-veilig).
+        introDone.current = true;
+        introRunning.current = false;
       };
-      stepTimer = setTimeout(stepOnce, 250);
+      holdTimer = setTimeout(() => {
+        map.once("zoomend", done);
+        fallbackTimer = setTimeout(done, 2500); // vangnet als zoomend niet vuurt
+        map.setView([center.lat, center.lon], 12, { animate: true });
+      }, 800);
       return () => {
-        clearTimeout(stepTimer);
+        clearTimeout(holdTimer);
+        clearTimeout(fallbackTimer);
+        map.off("zoomend", done);
         introRunning.current = false;
       };
     }
