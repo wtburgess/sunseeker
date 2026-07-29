@@ -20,12 +20,14 @@ import {
   fetchCurrents,
   fetchDailies,
   fetchMinutelyForecast,
+  RATE_LIMIT,
   type CurrentWeather,
   type DayLite,
   type MinutelyData,
   type WeatherCondition,
 } from "../lib/weather";
 import { type City } from "../lib/cities";
+import { COUNTRY_LABELS } from "../lib/countryLabels";
 import { type Favorite } from "../lib/favorites";
 import { distanceKm } from "../lib/geo";
 import { weatherGlyphSvg } from "../lib/weatherGlyphs";
@@ -266,6 +268,23 @@ function nameIcon(name: string, offsetY: number, scale = 1) {
   });
 }
 
+/** Land-label (Nederlands): groot, uppercase, gespatieerd en gedempt grijs met een
+ *  witte gloed — subtiel op de achtergrond, voor oriëntatie bij uitgezoomd niveau. */
+function countryLabelIcon(name: string) {
+  const w = 240;
+  const h = 20;
+  return L.divIcon({
+    className: "",
+    html:
+      `<div style="white-space:nowrap;text-align:center;font-family:'Archivo Narrow',sans-serif;` +
+      `font-weight:700;font-size:15px;letter-spacing:0.14em;text-transform:uppercase;line-height:1;` +
+      `color:rgba(20,20,20,0.5);` +
+      `text-shadow:0 0 4px #fff,0 0 4px #fff,0 0 4px #fff,0 0 4px #fff">${name}</div>`,
+    iconSize: [w, h],
+    iconAnchor: [Math.round(w / 2), Math.round(h / 2)],
+  });
+}
+
 /** Marker-icoon voor een plaats op de gekozen tijdlijn-stap (nu of een dag). */
 function iconForPlace(
   place: NearbyPlace,
@@ -320,12 +339,14 @@ function MapEngine({
   onLoaded,
   onLoading,
   onSlowNetwork,
+  onRateLimited,
 }: {
   center: Coords;
   locateNonce: number;
   onLoaded: (places: NearbyPlace[]) => void;
   onLoading: (loading: boolean) => void;
   onSlowNetwork: (isSlow: boolean) => void;
+  onRateLimited: (limited: boolean) => void;
 }) {
   const map = useMap();
   const cache = useRef<Map<string, { cur: CurrentWeather; days: DayLite[] }>>(
@@ -390,8 +411,11 @@ function MapEngine({
           return { city: c, cur: e.cur, days: e.days };
         }),
       );
-    } catch {
-      // Bijladen is optioneel; stil falen.
+      onRateLimited(false); // gelukt → eventuele limiet-melding weg
+    } catch (e) {
+      // Bijladen is optioneel; stil falen — behalve bij de rate-limit (429),
+      // die melden we zodat de lege kaart verklaard wordt.
+      if (e instanceof Error && e.message === RATE_LIMIT) onRateLimited(true);
     } finally {
       if (id === reqId.current) {
         onLoading(false);
@@ -399,7 +423,7 @@ function MapEngine({
         onSlowNetwork(false);
       }
     }
-  }, [map, onLoaded, onLoading, onSlowNetwork]);
+  }, [map, onLoaded, onLoading, onSlowNetwork, onRateLimited]);
 
   const schedule = useCallback(() => {
     clearTimeout(timer.current);
@@ -444,11 +468,12 @@ function MapEngine({
 
     if (playIntro) {
       introRunning.current = true;
-      // Toon eerst zoom 10 (eigen locatie + de weer-iconen eromheen), wacht ~1 s,
-      // en zoom dan in ÉÉN vloeiende beweging in naar 12 met Leaflets pinch-achtige
-      // CSS-transform-zoom (die op iOS wél soepel hertekent, i.t.t. de rAF-flyTo).
+      // Toon eerst zoom 10 (eigen locatie), wacht ~1 s, en zoom dan in ÉÉN vloeiende
+      // beweging in naar 12 met Leaflets pinch-achtige CSS-transform-zoom (die op iOS
+      // wél soepel hertekent, i.t.t. de rAF-flyTo). We laden het weer één keer, op de
+      // eind-zoom (zie finish) — dat scheelt API-calls (rate-limit) en de iconen
+      // verschijnen netjes zodra de kaart tot rust komt.
       map.setView([center.lat, center.lon], 10, { animate: false });
-      load(); // iconen op zoom 10
 
       let settled = false;
       let timer: ReturnType<typeof setTimeout>;
@@ -535,6 +560,9 @@ export default function LiveMap({
   const [nearby, setNearby] = useState<NearbyPlace[]>([]);
   const [loading, setLoading] = useState(false);
   const [slowNetworkDetected, setSlowNetworkDetected] = useState(false);
+  // True zodra Open-Meteo de rate-limit weigert (429): dan tonen we een melding
+  // i.p.v. een onverklaarbaar lege kaart.
+  const [rateLimited, setRateLimited] = useState(false);
   const [minutelyData, setMinutelyData] = useState<MinutelyData | null>(null);
   const [showRainOverlay, setShowRainOverlay] = useState(false);
   // Tijdlijn: 'now' of een dag-index; playing = automatisch doorlopen.
@@ -726,23 +754,27 @@ export default function LiveMap({
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png"
           subdomains="abcd"
         />
-        {/* Labels-laag (landen, regio's, plaatsnamen) — enkel bij uitgezoomd, voor
-            oriëntatie op het continentale/regionale overzicht. Zodra je inzoomt
-            (waar de dorpen verschijnen én de app zijn eigen vette stad-labels tekent)
-            verbergen we 'm, zodat plaatsnamen niet dubbel staan. */}
-        {zoom <= 8 && (
-          <TileLayer
-            attribution=""
-            url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png"
-            subdomains="abcd"
-          />
-        )}
+        {/* Eigen Nederlandse land-labels — enkel bij uitgezoomd (≤ zoom 6), voor
+            oriëntatie op het continentale/regionale overzicht. Getekend i.p.v. de
+            anderstalige CARTO-labeltegels, en verborgen zodra je inzoomt (dan tonen
+            de eigen stad-labels de context, geen dubbele namen). */}
+        {zoom <= 6 &&
+          COUNTRY_LABELS.map((c) => (
+            <Marker
+              key={`country-${c.name}`}
+              position={[c.lat, c.lon]}
+              icon={countryLabelIcon(c.name)}
+              interactive={false}
+              zIndexOffset={-300}
+            />
+          ))}
         <MapEngine
           center={center}
           locateNonce={locateNonce}
           onLoaded={setNearby}
           onLoading={setLoading}
           onSlowNetwork={setSlowNetworkDetected}
+          onRateLimited={setRateLimited}
         />
 
         {/* Omtrekcirkel van de max-afstand vanaf de gezochte plaats. */}
@@ -1035,6 +1067,17 @@ export default function LiveMap({
         <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-1.5 rounded-full bg-surface/95 border border-outline-variant px-3 py-1 stamp-shadow font-label-sm text-label-sm text-on-surface-variant">
           <Icon name="progress_activity" className="text-base animate-spin" />
           Weer laden…
+        </div>
+      )}
+
+      {/* Open-Meteo rate-limit (429): verklaar de (deels) lege kaart. */}
+      {rateLimited && !loading && (
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-1.5 max-w-[92%] rounded-xl bg-error-container border border-error/40 px-3 py-1.5 stamp-shadow font-label-sm text-label-sm text-on-error-container">
+          <Icon name="error" filled className="text-base shrink-0" />
+          <span className="leading-snug">
+            Weer tijdelijk niet beschikbaar (te veel aanvragen) — probeer over een
+            paar minuten opnieuw.
+          </span>
         </div>
       )}
 
