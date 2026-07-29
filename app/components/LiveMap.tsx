@@ -726,6 +726,14 @@ export default function LiveMap({
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png"
           subdomains="abcd"
         />
+        {/* Labels-laag (landen, regio's, plaatsnamen) bovenop de label-loze basis,
+            zodat je je kunt oriënteren. Rendert in de tegel-laag, dus ónder de eigen
+            vette stad-labels + weer-iconen van de app (die in de marker-laag zitten). */}
+        <TileLayer
+          attribution=""
+          url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png"
+          subdomains="abcd"
+        />
         <MapEngine
           center={center}
           locateNonce={locateNonce}
