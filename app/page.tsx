@@ -54,6 +54,9 @@ export default function Home() {
   const [placeName, setPlaceName] = useState("");
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [locating, setLocating] = useState(false);
+  // Telt op bij elke locatiebepaling (opstart, GPS-knop, IP-terugval). De kaart
+  // speelt bij elke nieuwe waarde de inzoom-intro op de locatie af.
+  const [locateNonce, setLocateNonce] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   // Aangeklikte plaats → dag-detailoverzicht (over de zoekbalk + kaart).
   const [selected, setSelected] = useState<{
@@ -101,6 +104,7 @@ export default function Home() {
       setDeviceLoc((d) => d ?? { name: "Brussel", lat: FALLBACK.lat, lon: FALLBACK.lon });
       setNotice("Geen locatie beschikbaar — typ een plaats of gebruik Brussel");
     }
+    setLocateNonce((n) => n + 1); // intro afspelen op de (benaderde) locatie
     setLocating(false);
   }, []);
 
@@ -118,6 +122,7 @@ export default function Home() {
         const here = { lat: pos.coords.latitude, lon: pos.coords.longitude };
         setCoords(here);
         setDeviceLoc({ name: "Mijn locatie", lat: here.lat, lon: here.lon });
+        setLocateNonce((n) => n + 1); // intro afspelen op de GPS-locatie
         setNotice(null);
         setLocating(false);
         const name = await reverseGeocode(here.lat, here.lon).catch(() => null);
@@ -303,6 +308,7 @@ export default function Home() {
             {coords ? (
               <LiveMap
                 center={coords}
+                locateNonce={locateNonce}
                 label={placeName || query}
                 favorites={favorites}
                 onSelect={setSelected}

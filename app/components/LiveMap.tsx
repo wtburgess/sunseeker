@@ -316,16 +316,16 @@ function thinByPixels(cities: City[], map: L.Map, minPx: number, max: number) {
  */
 function MapEngine({
   center,
+  locateNonce,
   onLoaded,
   onLoading,
   onSlowNetwork,
-  onDebug,
 }: {
   center: Coords;
+  locateNonce: number;
   onLoaded: (places: NearbyPlace[]) => void;
   onLoading: (loading: boolean) => void;
   onSlowNetwork: (isSlow: boolean) => void;
-  onDebug: (info: string) => void;
 }) {
   const map = useMap();
   const cache = useRef<Map<string, { cur: CurrentWeather; days: DayLite[] }>>(
@@ -336,7 +336,9 @@ function MapEngine({
   const reqId = useRef(0);
   // Intro-zoom (continentaal → locatie) mag maar één keer draaien; zolang hij
   // loopt onderdrukken we het gewone bijladen bij elke tussenliggende zoom-stap.
-  const introDone = useRef(false);
+  // Laatst afgespeelde locatie-nonce: de intro-zoom speelt bij het opstarten en
+  // telkens als de locatieknop een nieuwe nonce doorgeeft (niet bij een zoekopdracht).
+  const lastIntroNonce = useRef(-1);
   const introRunning = useRef(false);
 
   const load = useCallback(async () => {
@@ -434,60 +436,60 @@ function MapEngine({
     ];
     const frame = () => map.fitBounds(bounds, { padding: [16, 16] });
 
-    // Intro (enkel bij het opstarten): van een continentaal overzicht (zoom 3)
-    // in snelle stapjes inzoomen op de locatie, die de hele tijd centraal blijft.
-    // Zo krijg je een duidelijk centraal punt. Daarna de gewone eindkadrering +
-    // het bijladen van de plaatsen; tussentijds bijladen staat uit (introRunning).
-    if (!introDone.current) {
-      introRunning.current = true;
-      map.invalidateSize();
-      // Eind-zoom meten (vast getal). We zoomen in met discrete, instant stapjes
-      // i.p.v. een vloeiende flyTo: elke setView(animate:false) is een échte
-      // view-reset die iOS betrouwbaar hertekent. Een flyTo-animatie bleef op iOS
-      // visueel op de continentale render hangen terwijl de interne zoom al klopte.
-      // Eind-zoom meten — maar alleen vertrouwen als de container een echte maat
-      // heeft. Bij hoogte ~0 (nog niet uitgekaderd) geeft getBoundsZoom de
-      // max-zoom terug; dan vallen we terug op een verstandige regio-zoom (7).
-      const dbgStart =
-        `start h${Math.round(map.getContainer().clientHeight)} ` +
-        `vv${Math.round(window.visualViewport?.height ?? 0)}`;
-      onDebug(dbgStart);
+    // Intro-zoom afspelen bij het opstarten én telkens als de locatieknop een
+    // nieuwe nonce doorgeeft — maar niet bij een gewone zoekopdracht (die verandert
+    // wél het middelpunt, maar niet de nonce). lastIntroNonce wordt pas bij het
+    // afronden bijgewerkt (StrictMode-veilig: een afgebroken intro speelt opnieuw).
+    const playIntro = locateNonce !== lastIntroNonce.current;
 
-      // Intro: begin ingezoomd op de eigen locatie (zoom 10) met de weer-iconen
-      // eromheen. Na een korte hold zoomen we vloeiend in naar 12 met Leaflets
-      // EIGEN zoom-animatie — een CSS-transform, net als de settle van een
-      // pinch-zoom. De sprong is 2 (≤ zoomAnimationThreshold), dus dit animeert
-      // i.p.v. te springen, en die CSS-transform hertekent op iOS wél soepel
-      // (i.t.t. de rAF-gebaseerde flyTo, die daar bleef hangen).
+    if (playIntro) {
+      introRunning.current = true;
+      // Begin ingezoomd op de eigen locatie (zoom 10) met de weer-iconen eromheen,
+      // en zoom dan vloeiend in naar 12 met Leaflets EIGEN zoom-animatie — een
+      // CSS-transform, net als de settle van een pinch-zoom (die hertekent op iOS
+      // wél soepel, i.t.t. de rAF-gebaseerde flyTo). Voor een rustiger tempo doen
+      // we het in kleine geketende stapjes van 0,5 i.p.v. één sprong.
       map.setView([center.lat, center.lon], 10, { animate: false });
       load(); // iconen op zoom 10
+
       let settled = false;
-      let holdTimer: ReturnType<typeof setTimeout>;
-      let fallbackTimer: ReturnType<typeof setTimeout>;
-      const done = () => {
+      let timer: ReturnType<typeof setTimeout>;
+      const finish = () => {
         if (settled) return;
         settled = true;
-        clearTimeout(fallbackTimer);
-        map.off("zoomend", done);
-        onDebug(`${dbgStart} | eind z${map.getZoom()}`);
+        clearTimeout(timer);
         load(); // iconen op de eind-zoom
-        // Pas hier "gedaan" markeren (StrictMode-veilig).
-        introDone.current = true;
+        lastIntroNonce.current = locateNonce;
         introRunning.current = false;
       };
-      holdTimer = setTimeout(() => {
-        map.once("zoomend", done);
-        fallbackTimer = setTimeout(done, 2500); // vangnet als zoomend niet vuurt
-        map.setView([center.lat, center.lon], 12, { animate: true });
-      }, 800);
+      let zc = 10;
+      const step = () => {
+        if (zc >= 12) {
+          finish();
+          return;
+        }
+        zc = Math.min(zc + 0.5, 12);
+        let advanced = false;
+        const onEnd = () => {
+          if (advanced) return;
+          advanced = true;
+          map.off("zoomend", onEnd);
+          clearTimeout(timer);
+          timer = setTimeout(step, 120); // kleine pauze tussen stapjes → rustiger
+        };
+        map.once("zoomend", onEnd);
+        timer = setTimeout(onEnd, 600); // vangnet per stap als zoomend niet vuurt
+        map.setView([center.lat, center.lon], zc, { animate: true });
+      };
+      // Korte hold op zoom 10 zodat je je positie + de nabije iconen ziet.
+      timer = setTimeout(step, 600);
       return () => {
-        clearTimeout(holdTimer);
-        clearTimeout(fallbackTimer);
-        map.off("zoomend", done);
+        clearTimeout(timer);
         introRunning.current = false;
       };
     }
 
+    // Zoekopdracht (geen intro): meteen kaderen op de regio rond de plaats.
     map.once("moveend", runOnce);
     frame();
     // Vangnet als de kaart al op die plek stond (geen beweging → geen moveend).
@@ -496,10 +498,7 @@ function MapEngine({
       clearTimeout(fallback);
       map.off("moveend", runOnce);
     };
-    // onDebug (setDbg) is een stabiele setState-functie; bewust buiten de deps
-    // gehouden. Grootte van de array blijft zo constant (3).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [center, map, load]);
+  }, [center, locateNonce, map, load]);
 
   // Debounce-timer opruimen bij unmount.
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -532,11 +531,13 @@ type FavPlace = { fav: Favorite; cur: CurrentWeather; days: DayLite[] };
 
 export default function LiveMap({
   center,
+  locateNonce,
   label,
   favorites,
   onSelect,
 }: {
   center: Coords;
+  locateNonce: number;
   label: string;
   favorites: Favorite[];
   onSelect: (place: { name: string; lat: number; lon: number }) => void;
@@ -554,8 +555,6 @@ export default function LiveMap({
   // Kaart-verwijzing + actueel zoomniveau (voor de eigen zoombediening).
   const mapRef = useRef<L.Map | null>(null);
   const [zoom, setZoom] = useState(10);
-  // Tijdelijke diagnose-regel (iOS-opstartgedrag). Verwijderen zodra opgelost.
-  const [dbg, setDbg] = useState("");
   // "Alleen favorieten"-weergave: enkel de bewaarde plaatsen (met hun weer).
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [favPlaces, setFavPlaces] = useState<FavPlace[]>([]);
@@ -741,10 +740,10 @@ export default function LiveMap({
         />
         <MapEngine
           center={center}
+          locateNonce={locateNonce}
           onLoaded={setNearby}
           onLoading={setLoading}
           onSlowNetwork={setSlowNetworkDetected}
-          onDebug={setDbg}
         />
 
         {/* Omtrekcirkel van de max-afstand vanaf de gezochte plaats. */}
@@ -1037,13 +1036,6 @@ export default function LiveMap({
         <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-1.5 rounded-full bg-surface/95 border border-outline-variant px-3 py-1 stamp-shadow font-label-sm text-label-sm text-on-surface-variant">
           <Icon name="progress_activity" className="text-base animate-spin" />
           Weer laden…
-        </div>
-      )}
-
-      {/* Tijdelijke diagnose-regel voor het iOS-opstartgedrag. */}
-      {dbg && (
-        <div className="absolute bottom-24 left-2 right-2 z-[2000] rounded bg-black/80 px-2 py-1 font-mono text-[11px] leading-tight text-white pointer-events-none break-all">
-          {dbg} · nu z{zoom}
         </div>
       )}
 
