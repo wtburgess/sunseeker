@@ -122,7 +122,13 @@ export async function reverseGeocode(
     adminLevel?: number;
   }[];
   const municipality = admin.find((a) => a.adminLevel === 8)?.name;
-  const place = municipality || d.city || d.locality || d.principalSubdivision;
+  // Soms is `city` eigenlijk de regionaam (bv. Brussel: `city` == de regio
+  // "Brussels Hoofdstedelijk Gewest"). Dan geeft `locality` de echte plaats.
+  const cityIsRegion = d.city && d.city === d.principalSubdivision;
+  const place =
+    municipality ||
+    (cityIsRegion ? d.locality || d.city : d.city || d.locality) ||
+    d.principalSubdivision;
   return place || null;
 }
 
