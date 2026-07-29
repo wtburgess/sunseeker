@@ -28,6 +28,7 @@ import {
 } from "../lib/weather";
 import { type City } from "../lib/cities";
 import { COUNTRY_LABELS } from "../lib/countryLabels";
+import { REGION_LABELS } from "../lib/regionLabels";
 import { type Favorite } from "../lib/favorites";
 import { distanceKm } from "../lib/geo";
 import { weatherGlyphSvg } from "../lib/weatherGlyphs";
@@ -279,6 +280,23 @@ function countryLabelIcon(name: string) {
       `<div style="white-space:nowrap;text-align:center;font-family:'Archivo Narrow',sans-serif;` +
       `font-weight:700;font-size:15px;letter-spacing:0.14em;text-transform:uppercase;line-height:1;` +
       `color:rgba(20,20,20,0.5);` +
+      `text-shadow:0 0 4px #fff,0 0 4px #fff,0 0 4px #fff,0 0 4px #fff">${name}</div>`,
+    iconSize: [w, h],
+    iconAnchor: [Math.round(w / 2), Math.round(h / 2)],
+  });
+}
+
+/** Regio-label (Nederlands): kleiner en lichter dan een land-label — zit qua
+ *  gewicht tussen land en stad in, voor oriëntatie op regionaal zoomniveau. */
+function regionLabelIcon(name: string) {
+  const w = 200;
+  const h = 16;
+  return L.divIcon({
+    className: "",
+    html:
+      `<div style="white-space:nowrap;text-align:center;font-family:'Archivo Narrow',sans-serif;` +
+      `font-weight:600;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;line-height:1;` +
+      `color:rgba(30,30,30,0.5);` +
       `text-shadow:0 0 4px #fff,0 0 4px #fff,0 0 4px #fff,0 0 4px #fff">${name}</div>`,
     iconSize: [w, h],
     iconAnchor: [Math.round(w / 2), Math.round(h / 2)],
@@ -766,6 +784,20 @@ export default function LiveMap({
               icon={countryLabelIcon(c.name)}
               interactive={false}
               zIndexOffset={-300}
+            />
+          ))}
+
+        {/* Regio-labels (Nederlands, gecureerd) — op regionaal zoomniveau (6–8),
+            tussen het land-overzicht en het ingezoomde stad-niveau in. */}
+        {zoom >= 6 &&
+          zoom <= 8 &&
+          REGION_LABELS.map((rg) => (
+            <Marker
+              key={`region-${rg.name}-${rg.lat}`}
+              position={[rg.lat, rg.lon]}
+              icon={regionLabelIcon(rg.name)}
+              interactive={false}
+              zIndexOffset={-250}
             />
           ))}
         <MapEngine
