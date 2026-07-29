@@ -445,46 +445,35 @@ function MapEngine({
     if (playIntro) {
       introRunning.current = true;
       // Begin ingezoomd op de eigen locatie (zoom 10) met de weer-iconen eromheen,
-      // en zoom dan vloeiend in naar 12 met Leaflets EIGEN zoom-animatie — een
-      // CSS-transform, net als de settle van een pinch-zoom (die hertekent op iOS
-      // wél soepel, i.t.t. de rAF-gebaseerde flyTo). Voor een rustiger tempo doen
-      // we het in kleine geketende stapjes van 0,5 i.p.v. één sprong.
+      // en zoom na een korte hold in ÉÉN vloeiende beweging in naar 12 met Leaflets
+      // pinch-achtige CSS-transform-zoom (die hertekent op iOS wél soepel, i.t.t.
+      // de rAF-gebaseerde flyTo). De duur is Leaflets vaste ~250ms.
       map.setView([center.lat, center.lon], 10, { animate: false });
       load(); // iconen op zoom 10
 
       let settled = false;
       let timer: ReturnType<typeof setTimeout>;
+      let fallback: ReturnType<typeof setTimeout>;
       const finish = () => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
+        clearTimeout(fallback);
+        map.off("zoomend", finish);
         load(); // iconen op de eind-zoom
         lastIntroNonce.current = locateNonce;
         introRunning.current = false;
       };
-      let zc = 10;
-      const step = () => {
-        if (zc >= 12) {
-          finish();
-          return;
-        }
-        zc = Math.min(zc + 0.5, 12);
-        let advanced = false;
-        const onEnd = () => {
-          if (advanced) return;
-          advanced = true;
-          map.off("zoomend", onEnd);
-          clearTimeout(timer);
-          timer = setTimeout(step, 120); // kleine pauze tussen stapjes → rustiger
-        };
-        map.once("zoomend", onEnd);
-        timer = setTimeout(onEnd, 600); // vangnet per stap als zoomend niet vuurt
-        map.setView([center.lat, center.lon], zc, { animate: true });
-      };
-      // Korte hold op zoom 10 zodat je je positie + de nabije iconen ziet.
-      timer = setTimeout(step, 600);
+      // Korte hold op zoom 10 (positie + iconen), dan de vloeiende zoom naar 12.
+      timer = setTimeout(() => {
+        map.once("zoomend", finish);
+        fallback = setTimeout(finish, 2000); // vangnet als zoomend niet vuurt
+        map.setView([center.lat, center.lon], 12, { animate: true });
+      }, 500);
       return () => {
         clearTimeout(timer);
+        clearTimeout(fallback);
+        map.off("zoomend", finish);
         introRunning.current = false;
       };
     }
