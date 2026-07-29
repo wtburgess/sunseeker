@@ -113,7 +113,16 @@ export async function reverseGeocode(
   if (!res.ok) return null;
 
   const d = await res.json();
-  const place = d.city || d.locality || d.principalSubdivision;
+  // De gemeente (OSM adminLevel 8) is doorgaans de juiste plaatsnaam. BigDataCloud
+  // geeft in `city` vaak de grotere naburige stad terug — bv. "Antwerpen" terwijl je
+  // eigenlijk in Edegem, Mortsel of Kalmthout staat. Waar het gemeente-niveau
+  // ontbreekt (sommige grootstadscentra) vallen we terug op city/locality/regio.
+  const admin = (d.localityInfo?.administrative ?? []) as {
+    name?: string;
+    adminLevel?: number;
+  }[];
+  const municipality = admin.find((a) => a.adminLevel === 8)?.name;
+  const place = municipality || d.city || d.locality || d.principalSubdivision;
   return place || null;
 }
 
