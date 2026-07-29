@@ -81,6 +81,15 @@ const CHUNK_SIZE = 50;
 const clamp = (v: number, min: number, max: number) =>
   Math.min(max, Math.max(min, v));
 
+/** Sentinel-fout wanneer Open-Meteo de gratis rate-limit weigert (HTTP 429). */
+export const RATE_LIMIT = "RATE_LIMIT";
+
+/** Gooit een herkenbare fout bij 429 (rate-limit), anders de gewone statusfout. */
+function assertOk(res: Response) {
+  if (res.status === 429) throw new Error(RATE_LIMIT);
+  assertOk(res);
+}
+
 /* ── Forecast ophalen (gebatcht + gechunkt) ────────────────────────────── */
 const DAILY_VARS =
   "temperature_2m_max,precipitation_sum,snowfall_sum,precipitation_probability_max,cloud_cover_mean,sunshine_duration,daylight_duration,weather_code";
@@ -96,7 +105,7 @@ async function fetchForecastChunk(
     `&daily=${DAILY_VARS}&forecast_days=${tripDays}&timezone=auto`;
 
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Open-Meteo gaf status ${res.status}`);
+  assertOk(res);
 
   const data = await res.json();
   const list = Array.isArray(data) ? data : [data];
@@ -180,7 +189,7 @@ export async function fetchHourly(
     `&start_date=${date}&end_date=${date}&timezone=auto`;
 
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Open-Meteo gaf status ${res.status}`);
+  assertOk(res);
 
   const data = await res.json();
   const h = data.hourly;
@@ -465,7 +474,7 @@ export async function fetchCurrent(point: LatLon): Promise<CurrentWeather> {
     `&current=temperature_2m,precipitation,weather_code,is_day&timezone=auto`;
 
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Open-Meteo gaf status ${res.status}`);
+  assertOk(res);
 
   const data = await res.json();
   const c = data.current ?? {};
@@ -486,7 +495,7 @@ async function fetchCurrentChunk(points: LatLon[]): Promise<CurrentWeather[]> {
     `&current=temperature_2m,precipitation,weather_code,is_day&timezone=auto`;
 
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Open-Meteo gaf status ${res.status}`);
+  assertOk(res);
 
   const data = await res.json();
   const list = Array.isArray(data) ? data : [data];
@@ -531,7 +540,7 @@ export async function fetchMinutelyForecast(point: LatLon): Promise<MinutelyData
     `&hourly=precipitation,precipitation_probability&forecast_days=2&timezone=auto`;
 
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Open-Meteo gaf status ${res.status}`);
+  assertOk(res);
 
   const data = await res.json();
   const nowMs = Date.now();
@@ -655,7 +664,7 @@ export async function fetchDailyDetail(
     `&daily=${DETAIL_VARS}&hourly=${DETAIL_HOURLY_VARS}&forecast_days=${days}&timezone=auto`;
 
   const res = await fetch(url);
-  if (!res.ok) throw new Error(`Open-Meteo gaf status ${res.status}`);
+  assertOk(res);
 
   const data = await res.json();
   const d = data.daily;
