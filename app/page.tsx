@@ -57,6 +57,9 @@ export default function Home() {
   // Telt op bij elke locatiebepaling (opstart, GPS-knop, IP-terugval). De kaart
   // speelt bij elke nieuwe waarde de inzoom-intro op de locatie af.
   const [locateNonce, setLocateNonce] = useState(0);
+  // True zodra de gebruiker de GPS-toestemming weigerde: dan tonen we een
+  // duidelijke banner met een "Opnieuw proberen"-knop i.p.v. stil op IP te vallen.
+  const [locationDenied, setLocationDenied] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   // Aangeklikte plaats → dag-detailoverzicht (over de zoekbalk + kaart).
   const [selected, setSelected] = useState<{
@@ -89,20 +92,22 @@ export default function Home() {
   // Terugval als de toestellocatie (GPS) niet beschikbaar is: benaderende
   // locatie via het IP-adres (geen toestemming nodig). Lukt ook dat niet, dan
   // Brussel als laatste redmiddel.
-  const fallbackToIp = useCallback(async () => {
+  const fallbackToIp = useCallback(async (silentNotice = false) => {
     const ip = await fetchIpLocation();
     if (ip) {
       setCoords({ lat: ip.lat, lon: ip.lon });
       setQuery(ip.name);
       setPlaceName(ip.name);
       setDeviceLoc({ name: ip.name, lat: ip.lat, lon: ip.lon });
-      setNotice("Locatie bij benadering - zet je GPS-locatie aan voor meer precisie");
+      if (!silentNotice)
+        setNotice("Locatie bij benadering - zet je GPS-locatie aan voor meer precisie");
     } else {
       setCoords((c) => c ?? FALLBACK);
       setQuery((q) => q || "Brussel");
       setPlaceName((p) => p || "Brussel");
       setDeviceLoc((d) => d ?? { name: "Brussel", lat: FALLBACK.lat, lon: FALLBACK.lon });
-      setNotice("Geen locatie beschikbaar — typ een plaats of gebruik Brussel");
+      if (!silentNotice)
+        setNotice("Geen locatie beschikbaar — typ een plaats of gebruik Brussel");
     }
     setLocateNonce((n) => n + 1); // intro afspelen op de (benaderde) locatie
     setLocating(false);
@@ -123,6 +128,7 @@ export default function Home() {
         setCoords(here);
         setDeviceLoc({ name: "Mijn locatie", lat: here.lat, lon: here.lon });
         setLocateNonce((n) => n + 1); // intro afspelen op de GPS-locatie
+        setLocationDenied(false); // gelukt → eventuele weiger-banner weg
         setNotice(null);
         setLocating(false);
         const name = await reverseGeocode(here.lat, here.lon).catch(() => null);
@@ -132,9 +138,14 @@ export default function Home() {
           setDeviceLoc({ name, lat: here.lat, lon: here.lon });
         }
       },
-      () => {
-        // GPS geweigerd of niet beschikbaar → benaderen via IP.
-        void fallbackToIp();
+      (err) => {
+        // Weigering (code 1) → duidelijke banner tonen; andere fouten (time-out,
+        // niet beschikbaar) vallen gewoon stil op de IP-locatie terug. In beide
+        // gevallen benaderen we via IP, maar bij weigering onderdrukken we de
+        // IP-melding (de banner is dan de boodschap).
+        const denied = err?.code === 1;
+        setLocationDenied(denied);
+        void fallbackToIp(denied);
       },
       { enableHighAccuracy: true, timeout: 10_000 },
     );
@@ -341,6 +352,49 @@ export default function Home() {
           />
         )}
         {showLegend && <Legend onClose={() => setShowLegend(false)} />}
+
+        {/* Locatie geweigerd: duidelijke banner met uitleg + opnieuw proberen.
+            Verschijnt onderaan, boven de kaartbediening, zonder de app te blokkeren. */}
+        {locationDenied && (
+          <div className="absolute inset-x-0 bottom-0 z-[1600] p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] animate-slide-up">
+            <div className="rounded-2xl bg-surface-container-high border-2 border-outline-variant stamp-shadow p-4">
+              <div className="flex items-start gap-3">
+                <span className="material-symbols-outlined text-primary text-[26px] shrink-0 mt-0.5">
+                  location_off
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-headline-sm text-[16px] uppercase tracking-wide text-on-surface leading-tight">
+                    Locatie geweigerd
+                  </p>
+                  <p className="text-on-surface-variant text-label-md mt-1 leading-snug">
+                    Je ziet nu je locatie bij benadering. Zet locatie aan in je
+                    browserinstellingen en probeer opnieuw voor je exacte plek.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2 mt-3.5">
+                <button
+                  onClick={() => setLocationDenied(false)}
+                  className="flex-1 px-4 py-2.5 rounded-xl border-2 border-outline-variant text-on-surface font-label-lg active-press"
+                >
+                  Sluiten
+                </button>
+                <button
+                  onClick={() => {
+                    setLocationDenied(false);
+                    useDeviceLocation();
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary text-on-primary font-label-lg active-press"
+                >
+                  <span className="material-symbols-outlined text-[20px]">
+                    my_location
+                  </span>
+                  Opnieuw proberen
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Android: install-prompt (verschijnt met vertraging, met backdrop) */}
         {showInstall && installPrompt && (
