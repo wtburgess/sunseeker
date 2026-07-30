@@ -1,6 +1,15 @@
 "use client";
 
 import "leaflet/dist/leaflet.css";
+
+// Zwaardere regen-alert pulsatie
+const rainAlertStyle = `
+  @keyframes rainfAlert {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(157, 61, 34, 0.7); }
+    50% { opacity: 0.3; box-shadow: 0 0 8px 4px rgba(200, 80, 50, 0.5); }
+  }
+  .rain-alert { animation: rainfAlert 1.5s ease-in-out infinite; }
+`;
 import L from "leaflet";
 import { useCallback, useEffect, useRef, useState, type Ref } from "react";
 import {
@@ -583,6 +592,14 @@ export default function LiveMap({
   favorites: Favorite[];
   onSelect: (place: { name: string; lat: number; lon: number }) => void;
 }) {
+  // Inject regen-alert animatie
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.textContent = rainAlertStyle;
+    document.head.appendChild(style);
+    return () => style.remove();
+  }, []);
+
   const [cur, setCur] = useState<CurrentWeather | null>(null);
   const [centerDays, setCenterDays] = useState<DayLite[]>([]);
   const [nearby, setNearby] = useState<NearbyPlace[]>([]);
@@ -1081,7 +1098,7 @@ export default function LiveMap({
           showRainOverlay
             ? "bg-primary text-on-primary"
             : "bg-surface text-primary border-2 border-outline-variant"
-        } ${hasRainExpected ? "animate-pulse" : ""}`}
+        } ${hasRainExpected ? "rain-alert" : ""}`}
       >
         <Icon name="raindrops" className="text-[24px]" />
       </button>
