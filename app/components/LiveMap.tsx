@@ -593,6 +593,7 @@ export default function LiveMap({
   const [rateLimited, setRateLimited] = useState(false);
   const [minutelyData, setMinutelyData] = useState<MinutelyData | null>(null);
   const [showRainOverlay, setShowRainOverlay] = useState(false);
+  const [showWeatherIcons, setShowWeatherIcons] = useState(true);
   // Tijdlijn: 'now' of een dag-index; playing = automatisch doorlopen.
   const [step, setStep] = useState<Step>("now");
   const [playing, setPlaying] = useState(false);
@@ -940,7 +941,7 @@ export default function LiveMap({
           <>
             {/* Plaatsen in beeld; de stad die met het middelpunt samenvalt
                 weglaten (anders een dubbel icoon achter de eigen-locatie). */}
-            {nearby
+            {showWeatherIcons && nearby
               .filter(({ city }) => distanceKm(center, city) > 2)
               .map((place) => {
                   const day = step === "now" ? place.days[0] : place.days[step];
@@ -1047,13 +1048,29 @@ export default function LiveMap({
         <Icon name="tune" filled className="text-[24px]" />
       </button>
 
+      {/* Weericonen-knop */}
+      <button
+        onClick={() => setShowWeatherIcons((v) => !v)}
+        aria-label="Weericonen"
+        title="Weericonen tonen/verbergen"
+        className={`absolute z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
+          favorites.length > 0 ? "top-[181px]" : "top-[125px]"
+        } right-3 ${
+          showWeatherIcons
+            ? "bg-primary text-on-primary"
+            : "bg-surface text-primary border-2 border-outline-variant"
+        }`}
+      >
+        <Icon name="wb_sunny" className="text-[24px]" />
+      </button>
+
       {/* Regenradar-knop */}
       <button
         onClick={() => setShowRainOverlay((v) => !v)}
         aria-label="Regenvoorspelling"
         title="Regenvoorspelling volgende uur"
         className={`absolute z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
-          favorites.length > 0 ? "top-[181px]" : "top-[125px]"
+          favorites.length > 0 ? "top-[237px]" : "top-[181px]"
         } right-3 ${
           showRainOverlay
             ? "bg-primary text-on-primary"
