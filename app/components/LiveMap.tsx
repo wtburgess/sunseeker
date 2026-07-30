@@ -67,11 +67,16 @@ const DIST_STEPS = [
  * naast Antwerpen) en oogt een land als Frankrijk niet leeg.
  */
 function maxNearbyForZoom(z: number): number {
-  if (z >= 11) return 90;
-  if (z >= 10) return 65;
-  if (z >= 9) return 48;
-  if (z >= 8) return 30; // standaard opstart-zoom: rustiger beeld
-  return 22; // ver uitgezoomd (continentaal overzicht)
+  if (z >= 12) return 90;
+  if (z >= 11) return 70;
+  if (z >= 10) return 50;
+  if (z >= 9) return 35;
+  if (z >= 8) return 25;
+  if (z >= 7) return 18;
+  if (z >= 6) return 12;
+  if (z >= 5) return 8;
+  if (z >= 4) return 5;
+  return 3; // ver uitgezoomd (continentaal overzicht)
 }
 /** Minimale afstand (px) tussen twee getoonde iconen, om overlap te vermijden.
  *  Iets ruimer dan het icoon breed is (bij MAP_ICON_SCALE), zodat ze nooit
@@ -270,15 +275,18 @@ function nameIcon(name: string, offsetY: number, scale = 1) {
 }
 
 /** Land-label (Nederlands): groot, uppercase, gespatieerd en gedempt grijs met een
- *  witte gloed — subtiel op de achtergrond, voor oriëntatie bij uitgezoomd niveau. */
-function countryLabelIcon(name: string) {
-  const w = 240;
-  const h = 20;
+ *  witte gloed — subtiel op de achtergrond, voor oriëntatie bij uitgezoomd niveau.
+ *  Schaalt af naarmate je uitzoemt. */
+function countryLabelIcon(name: string, zoom: number) {
+  const scale = Math.max(0.4, Math.min(1, (zoom - 2) / 4)); // schaal van 0.4–1.0 voor zoom 2–6
+  const fontSize = Math.round(15 * scale);
+  const w = Math.round(240 * scale);
+  const h = Math.round(20 * scale);
   return L.divIcon({
     className: "",
     html:
       `<div style="white-space:nowrap;text-align:center;font-family:'Archivo Narrow',sans-serif;` +
-      `font-weight:700;font-size:15px;letter-spacing:0.14em;text-transform:uppercase;line-height:1;` +
+      `font-weight:700;font-size:${fontSize}px;letter-spacing:0.14em;text-transform:uppercase;line-height:1;` +
       `color:rgba(20,20,20,0.5);` +
       `text-shadow:0 0 4px #fff,0 0 4px #fff,0 0 4px #fff,0 0 4px #fff">${name}</div>`,
     iconSize: [w, h],
@@ -286,16 +294,18 @@ function countryLabelIcon(name: string) {
   });
 }
 
-/** Regio-label (Nederlands): kleiner en lichter dan een land-label — zit qua
+/** Regio-label (Nederlands): kleiner en lichter dan een land-label, schaalt met zoom — zit qua
  *  gewicht tussen land en stad in, voor oriëntatie op regionaal zoomniveau. */
-function regionLabelIcon(name: string) {
-  const w = 200;
-  const h = 16;
+function regionLabelIcon(name: string, zoom: number) {
+  const scale = Math.max(0.5, Math.min(1, (zoom - 5) / 3)); // schaal van 0.5–1.0 voor zoom 5–8
+  const fontSize = Math.round(12 * scale);
+  const w = Math.round(200 * scale);
+  const h = Math.round(16 * scale);
   return L.divIcon({
     className: "",
     html:
       `<div style="white-space:nowrap;text-align:center;font-family:'Archivo Narrow',sans-serif;` +
-      `font-weight:600;font-size:12px;letter-spacing:0.1em;text-transform:uppercase;line-height:1;` +
+      `font-weight:600;font-size:${fontSize}px;letter-spacing:0.1em;text-transform:uppercase;line-height:1;` +
       `color:rgba(30,30,30,0.5);` +
       `text-shadow:0 0 4px #fff,0 0 4px #fff,0 0 4px #fff,0 0 4px #fff">${name}</div>`,
     iconSize: [w, h],
@@ -781,7 +791,7 @@ export default function LiveMap({
             <Marker
               key={`country-${c.name}`}
               position={[c.lat, c.lon]}
-              icon={countryLabelIcon(c.name)}
+              icon={countryLabelIcon(c.name, zoom)}
               interactive={false}
               zIndexOffset={-300}
             />
@@ -795,7 +805,7 @@ export default function LiveMap({
             <Marker
               key={`region-${rg.name}-${rg.lat}`}
               position={[rg.lat, rg.lon]}
-              icon={regionLabelIcon(rg.name)}
+              icon={regionLabelIcon(rg.name, zoom)}
               interactive={false}
               zIndexOffset={-250}
             />

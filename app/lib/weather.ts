@@ -87,7 +87,7 @@ export const RATE_LIMIT = "RATE_LIMIT";
 /** Gooit een herkenbare fout bij 429 (rate-limit), anders de gewone statusfout. */
 function assertOk(res: Response) {
   if (res.status === 429) throw new Error(RATE_LIMIT);
-  assertOk(res);
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
 /* ── Forecast ophalen (gebatcht + gechunkt) ────────────────────────────── */
