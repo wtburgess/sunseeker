@@ -660,6 +660,12 @@ export default function LiveMap({
     }
   }, [slowNetworkDetected, favorites.length, favoritesOnly]);
 
+  // Regen alert: als er regen voorspeld wordt in de komende uren
+  const hasRainExpected = minutelyData && (
+    minutelyData.nextHour.some((m) => m.precip > 0.1) ||
+    minutelyData.nextHours.some((h) => h.precip > 0.1)
+  );
+
   // Weer (nu + meerdaags) van de favorieten ophalen zodra de favorieten-weergave
   // aanstaat; buiten die weergave houden we niets bij.
   useEffect(() => {
@@ -1064,18 +1070,18 @@ export default function LiveMap({
         <Icon name="wb_sunny" className="text-[24px]" />
       </button>
 
-      {/* Regenradar-knop */}
+      {/* Regenradar-knop — pulseer wanneer regen verwacht wordt */}
       <button
         onClick={() => setShowRainOverlay((v) => !v)}
         aria-label="Regenvoorspelling"
-        title="Regenvoorspelling volgende uur"
+        title={hasRainExpected ? "Regen verwacht! Klik voor details" : "Regenvoorspelling volgende uur"}
         className={`absolute z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
           favorites.length > 0 ? "top-[237px]" : "top-[181px]"
         } right-3 ${
           showRainOverlay
             ? "bg-primary text-on-primary"
             : "bg-surface text-primary border-2 border-outline-variant"
-        }`}
+        } ${hasRainExpected ? "animate-pulse" : ""}`}
       >
         <Icon name="raindrops" className="text-[24px]" />
       </button>
