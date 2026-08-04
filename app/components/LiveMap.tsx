@@ -92,13 +92,35 @@ function maxNearbyForZoom(z: number): number {
  *  raken. */
 const MIN_PX = 56;
 /** Aantal dagen in de tijdlijn (naast 'Nu'). */
-const TIMELINE_DAYS = 10;
+const TIMELINE_DAYS = 14;
 
 const fmtWeekday = (iso: string) =>
   new Date(iso).toLocaleDateString("nl-BE", { weekday: "short" });
 const fmtDayMonth = (iso: string) => {
   const d = new Date(iso);
   return `${d.getDate()}/${d.getMonth() + 1}`;
+};
+
+/** Bereken bereik voor "dit weekend" (komende zaterdag–zondag). */
+const thisWeekend = (days: DayLite[]): { from: number; to: number } | null => {
+  const now = new Date();
+  const today = now.getDay();
+  let daysUntilSat = (6 - today + 7) % 7;
+  if (daysUntilSat === 0) daysUntilSat = 7; // als vandaag zaterdag is, volgende zaterdag
+  return daysUntilSat < days.length && daysUntilSat + 1 < days.length
+    ? { from: daysUntilSat, to: daysUntilSat + 1 }
+    : null;
+};
+
+/** Bereken bereik voor "volgende week" (komende maandag–zondag). */
+const nextWeek = (days: DayLite[]): { from: number; to: number } | null => {
+  const now = new Date();
+  const today = now.getDay();
+  let daysUntilMon = (1 - today + 7) % 7;
+  if (daysUntilMon === 0) daysUntilMon = 7; // als vandaag maandag is, volgende maandag
+  return daysUntilMon < days.length && daysUntilMon + 6 < days.length
+    ? { from: daysUntilMon, to: Math.min(daysUntilMon + 6, days.length - 1) }
+    : null;
 };
 
 const ACCENT = "#9d3d22";
@@ -630,6 +652,12 @@ export default function LiveMap({
   const [minSnow, setMinSnow] = useState(0);
   // Max. afstand vanaf de gezochte plaats (10–3000 km); MAX = onbeperkt.
   const [maxDist, setMaxDist] = useState(FILTER_DIST_MAX);
+  // Periode-bereik: null = dag-per-dag modus; {from, to} = index-bereik in centerDays.
+  const [range, setRange] = useState<{ from: number; to: number } | null>(null);
+  // Minstens X goede dagen in de geselecteerde periode.
+  const [minGoodDays, setMinGoodDays] = useState(1);
+  // Divergence-modal: welke dag divergeert?
+  const [divergenceDay, setDivergenceDay] = useState<(typeof centerDays)[0] | null>(null);
 
   // Actueel weer + meerdaagse verwachting op de eigen locatie ophalen.
   useEffect(() => {
@@ -749,6 +777,7 @@ export default function LiveMap({
   // Filter: max-regen op zijn hoogste stand = geen limiet.
   const effMaxRain = maxRain >= 15 ? Infinity : maxRain;
   const distLimited = maxDist < FILTER_DIST_MAX;
+  const rangeLimited = range !== null;
   const filterActive =
     minTemp > 0 ||
     maxTemp < 40 ||
@@ -756,7 +785,8 @@ export default function LiveMap({
     maxRain < 15 ||
     minRain > 0 ||
     minSnow > 0 ||
-    distLimited;
+    distLimited ||
+    rangeLimited;
   // Weer-gebonden voorwaarden (afstand komt er los bij, want die hangt van de
   // plaats af, niet van de dag).
   const passesWeather = (d: DayLite | undefined) =>
@@ -767,8 +797,23 @@ export default function LiveMap({
       d.precip <= effMaxRain &&
       d.precip >= minRain &&
       (d.snow ?? 0) >= minSnow);
-  const passesFilter = (d: DayLite | undefined, distKm = 0) =>
-    passesWeather(d) && (!distLimited || distKm <= maxDist);
+
+  // Telt hoeveel goede dagen in het bereik vallen.
+  const countGoodDays = (days: DayLite[]): number => {
+    if (!range) return passesWeather(days[0]) ? 1 : 0;
+    let count = 0;
+    for (let i = range.from; i <= range.to && i < days.length; i++) {
+      if (passesWeather(days[i])) count++;
+    }
+    return count;
+  };
+
+  const passesFilter = (d: DayLite | undefined, distKm = 0, days?: DayLite[]) => {
+    if (!passesWeather(d) || (distLimited && distKm > maxDist)) return false;
+    // In periode-modus: plaats moet genoeg goede dagen hebben.
+    if (rangeLimited && days) return countGoodDays(days) >= minGoodDays;
+    return true;
+  };
 
   // De eigen locatie volgt óók het filter, maar wordt niet grijs — enkel
   // doorgestreept als hij niet voldoet.
@@ -973,7 +1018,7 @@ export default function LiveMap({
                   // blijft, uit de aparte namen-laag hieronder).
                   if (distLimited && dist > maxDist) return null;
                   // Binnen de cirkel maar niet aan het weerfilter: grijs puntje.
-                  const dimmed = filterActive && !passesWeather(day);
+                  const dimmed = filterActive && !passesFilter(day, dist, place.days);
                   const icon = iconForPlace(place, step, dimmed, MAP_ICON_SCALE);
                   if (!icon) return null;
                   return (
@@ -1141,6 +1186,11 @@ export default function LiveMap({
           setMinSnow={setMinSnow}
           maxDist={maxDist}
           setMaxDist={setMaxDist}
+          range={range}
+          setRange={setRange}
+          minGoodDays={minGoodDays}
+          setMinGoodDays={setMinGoodDays}
+          centerDays={centerDays}
           onClose={() => setShowFilter(false)}
         />
       )}
@@ -1169,6 +1219,7 @@ export default function LiveMap({
         onStep={selectStep}
         playing={playing}
         onTogglePlay={() => setPlaying((p) => !p)}
+        onDivergenceClick={setDivergenceDay}
       />
 
       {/* Regenradar overlay — zweeft net onder de drie ronde knoppen rechts
@@ -1181,6 +1232,80 @@ export default function LiveMap({
           topPx={favorites.length > 0 ? 237 : 181}
         />
       )}
+
+      {/* Divergence-uitleg modal */}
+      {divergenceDay && (
+        <DivergenceModal
+          day={divergenceDay}
+          onClose={() => setDivergenceDay(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Modal: uitleg wanneer GFS en KNMI modellen divergeren. */
+function DivergenceModal({
+  day,
+  onClose,
+}: {
+  day: DayLite;
+  onClose: () => void;
+}) {
+  const tempDiff = day.knmiTMax !== undefined ? Math.abs(day.tMax - day.knmiTMax) : 0;
+  const rainDiff = day.knmiPrecip !== undefined ? Math.abs(day.precip - day.knmiPrecip) : 0;
+  const sunDiff = day.knmiSunHours !== undefined ? Math.abs(day.sunHours - day.knmiSunHours) : 0;
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 z-[2000] flex items-center justify-center p-4 animate-fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="bg-surface rounded-2xl border-2 border-outline-variant max-w-[400px] p-4 stamp-shadow"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <div className="text-[24px]">⚠️</div>
+          <h2 className="font-headline-sm text-[18px] text-on-surface">
+            Modellen divergeren
+          </h2>
+        </div>
+
+        <p className="text-[13px] text-on-surface-variant mb-3">
+          {day.divergenceReason?.includes("temp") && (
+            <div>
+              🌡️ <strong>Temperatuur:</strong> GFS zegt {day.tMax}°C, KNMI zegt{" "}
+              {day.knmiTMax}°C (verschil {tempDiff.toFixed(1)}°C)
+            </div>
+          )}
+          {day.divergenceReason?.includes("rain") && (
+            <div>
+              🌧️ <strong>Regen:</strong> GFS zegt {day.precip.toFixed(1)}mm, KNMI zegt{" "}
+              {day.knmiPrecip?.toFixed(1)}mm (verschil {rainDiff.toFixed(1)}mm)
+            </div>
+          )}
+          {day.divergenceReason?.includes("sun") && (
+            <div>
+              ☀️ <strong>Zon:</strong> GFS zegt {day.sunHours.toFixed(1)}u, KNMI zegt{" "}
+              {day.knmiSunHours?.toFixed(1)}u (verschil {sunDiff.toFixed(1)}u)
+            </div>
+          )}
+        </p>
+
+        <p className="text-[12px] text-on-surface-variant leading-snug mb-3">
+          <strong>Advies:</strong> KNMI HARMONIE is lokaal zeer nauwkeurig voor België. Als beide
+          modellen het erover eens zijn, is het zeer waarschijnlijk. Wanneer ze divergeren, is
+          de werkelijkheid waarschijnlijk ergens in het midden, maar <strong>KNMI is betrouwbaarder voor regio-specifieke voorspellingen</strong>.
+        </p>
+
+        <button
+          onClick={onClose}
+          className="w-full px-3 py-2 rounded-lg bg-primary text-on-primary font-headline-sm text-[13px] uppercase active-press"
+        >
+          Sluit
+        </button>
+      </div>
     </div>
   );
 }
@@ -1192,12 +1317,14 @@ function Timeline({
   onStep,
   playing,
   onTogglePlay,
+  onDivergenceClick,
 }: {
   days: DayLite[];
   step: Step;
   onStep: (s: Step) => void;
   playing: boolean;
   onTogglePlay: () => void;
+  onDivergenceClick?: (day: DayLite) => void;
 }) {
   // Actieve chip in beeld houden (mee-scrollen als hij buiten beeld valt).
   const activeRef = useRef<HTMLButtonElement | null>(null);
@@ -1288,6 +1415,9 @@ function Timeline({
               innerRef={step === i ? activeRef : undefined}
               label={fmtWeekday(d.date)}
               sub={fmtDayMonth(d.date)}
+              diverges={d.diverges}
+              divergenceReason={d.divergenceReason}
+              onDivergenceClick={() => onDivergenceClick?.(d)}
             />
           ))}
         </div>
@@ -1302,28 +1432,49 @@ function Chip({
   stepValue,
   label,
   sub,
+  diverges,
+  divergenceReason,
+  onDivergenceClick,
 }: {
   active: boolean;
   innerRef?: Ref<HTMLButtonElement>;
   stepValue: Step;
   label: string;
   sub: string;
+  diverges?: boolean;
+  divergenceReason?: string;
+  onDivergenceClick?: () => void;
 }) {
   return (
-    <button
-      ref={innerRef}
-      data-step={stepValue}
-      className={`shrink-0 min-w-[38px] px-1 py-1 rounded-md text-center leading-none active-press transition-colors ${
-        active
-          ? "bg-primary text-on-primary"
-          : "bg-surface-container-high text-on-surface-variant"
-      }`}
-    >
-      <div className="font-headline-sm text-[16px] uppercase capitalize">
-        {label}
-      </div>
-      <div className="text-[12px] mt-0.5 h-3.5">{sub}</div>
-    </button>
+    <div className="relative shrink-0">
+      <button
+        ref={innerRef}
+        data-step={stepValue}
+        className={`min-w-[38px] px-1 py-1 rounded-md text-center leading-none active-press transition-colors block w-full ${
+          active
+            ? "bg-primary text-on-primary"
+            : "bg-surface-container-high text-on-surface-variant"
+        }`}
+      >
+        <div className="font-headline-sm text-[16px] uppercase capitalize">
+          {label}
+        </div>
+        <div className="text-[12px] mt-0.5 h-3.5">{sub}</div>
+      </button>
+      {diverges && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDivergenceClick?.();
+          }}
+          className="absolute -top-1 -right-1 bg-warning text-on-warning rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold cursor-help hover:scale-110 transition-transform"
+          title={`Modellen divergeren: ${divergenceReason}`}
+          aria-label={`Model-divergentie: ${divergenceReason}`}
+        >
+          ⚠
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -1343,6 +1494,11 @@ function FilterPanel({
   setMinSnow,
   maxDist,
   setMaxDist,
+  range,
+  setRange,
+  minGoodDays,
+  setMinGoodDays,
+  centerDays,
   onClose,
 }: {
   minTemp: number;
@@ -1359,6 +1515,11 @@ function FilterPanel({
   setMinSnow: (v: number) => void;
   maxDist: number;
   setMaxDist: (v: number) => void;
+  range: { from: number; to: number } | null;
+  setRange: (r: { from: number; to: number } | null) => void;
+  minGoodDays: number;
+  setMinGoodDays: (v: number) => void;
+  centerDays: DayLite[];
   onClose: () => void;
 }) {
   const [showHelp, setShowHelp] = useState(false);
@@ -1370,6 +1531,8 @@ function FilterPanel({
     setMinRain(0);
     setMinSnow(0);
     setMaxDist(FILTER_DIST_MAX);
+    setRange(null);
+    setMinGoodDays(1);
   };
   // Snelkeuzes: zetten de weer-schuifbalken in één tik zodat de kaart net die
   // plaatsen toont die het gekozen icoon opleveren (afstand blijft ongemoeid).
@@ -1453,6 +1616,67 @@ function FilterPanel({
           steps={DIST_STEPS}
           onChange={setMaxDist}
         />
+
+        {/* Periode kiezen: snelknoppen + bereik */}
+        <div className="px-4 py-3 border-b border-outline-variant">
+          <div className="font-headline-sm text-[13px] uppercase tracking-wide text-on-surface mb-2">
+            Periode
+          </div>
+          <div className="flex gap-1.5 flex-wrap">
+            <button
+              onClick={() => {
+                const w = thisWeekend(centerDays);
+                if (w) setRange(w);
+              }}
+              disabled={!thisWeekend(centerDays)}
+              className="px-2.5 py-1 rounded-lg text-[12px] font-headline-sm bg-surface-container-high text-on-surface-variant disabled:opacity-30 active-press"
+            >
+              Dit weekend
+            </button>
+            <button
+              onClick={() => {
+                const w = nextWeek(centerDays);
+                if (w) setRange(w);
+              }}
+              disabled={!nextWeek(centerDays)}
+              className="px-2.5 py-1 rounded-lg text-[12px] font-headline-sm bg-surface-container-high text-on-surface-variant disabled:opacity-30 active-press"
+            >
+              Volgende week
+            </button>
+            <button
+              onClick={() => setRange(null)}
+              className={`px-2.5 py-1 rounded-lg text-[12px] font-headline-sm active-press ${
+                range === null
+                  ? "bg-primary text-on-primary"
+                  : "bg-surface-container-high text-on-surface-variant"
+              }`}
+            >
+              Kies dagen
+            </button>
+          </div>
+          {range && (
+            <div className="mt-2 text-[11px] text-on-surface-variant">
+              {centerDays[range.from]
+                ? `${fmtWeekday(centerDays[range.from].date)} tot ${fmtWeekday(centerDays[range.to].date)}`
+                : ""}
+            </div>
+          )}
+        </div>
+
+        {/* Minstens X goede dagen in de periode */}
+        {range && (
+          <FilterRow
+            icon="calendar_today"
+            title="Minstens X goede dagen"
+            info={`Toon plaatsen met minstens deze hoeveelheid goede dagen in je periode.`}
+            display={`${minGoodDays}`}
+            value={minGoodDays}
+            min={1}
+            max={Math.max(1, range.to - range.from + 1)}
+            step={1}
+            onChange={setMinGoodDays}
+          />
+        )}
 
         <TempPair
           minTemp={minTemp}

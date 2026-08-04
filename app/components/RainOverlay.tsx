@@ -145,32 +145,66 @@ export function RainOverlay({
     ctx.textBaseline = "top";
     ctx.fillText("mm/u", 2, 0);
 
-    // ── Kwartier-deel: staafjes per 15 min (extra smalle balkjes)
-    const quarterW = minW / 4;
-    ctx.fillStyle = LINE;
-    data.nextHour.forEach((m, i) => {
-      const off = Math.min(60, Math.max(0, m.minute));
-      if (off >= 60) return;
-      const bx = minX0 + (minW * off) / 60;
-      const barGap = quarterW * 0.4; // 40% tussenruimte (veel smallere balkjes)
-      const barW = quarterW - barGap;
-      const by = yFor(minInt[i]);
-      ctx.fillRect(bx + barGap / 2, by, barW, Math.max(0, gy1 - by));
-    });
+    // ── Vloeiende curve: minuten-deel
+    if (data.nextHour.length > 0) {
+      const points = data.nextHour
+        .filter((m) => m.minute >= 0 && m.minute <= 60)
+        .map((m) => ({
+          x: minX0 + (minW * Math.min(60, m.minute)) / 60,
+          y: yFor(minInt[data.nextHour.indexOf(m)]),
+        }));
 
-    // ── Uur-deel: staafjes ───────────────────────────────────────────────
-    const nHr = hrInt.length;
-    if (nHr > 0) {
-      const slot = hrW / nHr;
-      const barGap = slot * 0.35; // 35% tussenruimte (smallere balkjes)
-      const barW = slot - barGap;
-      ctx.fillStyle = LINE;
-      for (let i = 0; i < nHr; i++) {
-        const bx = hrX0 + i * slot + barGap / 2;
-        const by = yFor(hrInt[i]);
-        const bh = gy1 - by;
-        ctx.fillRect(bx, by, barW, Math.max(0, bh));
+      if (points.length > 0) {
+        // Gefilled area onder de curve
+        ctx.fillStyle = LINE + "33"; // transparant
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, gy1);
+        points.forEach((p) => ctx.lineTo(p.x, p.y));
+        ctx.lineTo(points[points.length - 1].x, gy1);
+        ctx.closePath();
+        ctx.fill();
+
+        // Lijn
+        ctx.strokeStyle = LINE;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(points[0].x, points[0].y);
+        for (let i = 1; i < points.length; i++) {
+          ctx.lineTo(points[i].x, points[i].y);
+        }
+        ctx.stroke();
       }
+    }
+
+    // ── Uur-deel: vloeiende curve ───────────────────────────────────────
+    const nHr = hrInt.length;
+    if (nHr > 1) {
+      const hrPoints = [];
+      for (let i = 0; i < nHr; i++) {
+        hrPoints.push({
+          x: hrX0 + (i + 0.5) * (hrW / nHr),
+          y: yFor(hrInt[i]),
+        });
+      }
+
+      // Gefilled area
+      ctx.fillStyle = LINE + "33";
+      ctx.beginPath();
+      ctx.moveTo(hrPoints[0].x, gy1);
+      hrPoints.forEach((p) => ctx.lineTo(p.x, p.y));
+      ctx.lineTo(hrPoints[hrPoints.length - 1].x, gy1);
+      ctx.closePath();
+      ctx.fill();
+
+      // Lijn
+      ctx.strokeStyle = LINE;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(hrPoints[0].x, hrPoints[0].y);
+      for (let i = 1; i < hrPoints.length; i++) {
+        ctx.lineTo(hrPoints[i].x, hrPoints[i].y);
+      }
+      ctx.stroke();
     }
 
     // ── Scheidingslijn tussen minuten en uren ────────────────────────────
@@ -247,7 +281,7 @@ export function RainOverlay({
       >
         <div>
           <h3 style={{ margin: "0 0 0.25rem 0", fontSize: "16px", fontWeight: 600 }}>
-            Regenvoorspelling{location ? ` ${location}` : ""}
+            REGEN-RADAR{location ? ": " : ""}<span style={{ color: "#999" }}>{location}</span>
           </h3>
           <p style={{ margin: 0, fontSize: "13px", color: "#666" }}>{subtitle}</p>
         </div>
@@ -286,7 +320,9 @@ export function RainOverlay({
 
       {/* Legenda-regel */}
       <p style={{ margin: 0, fontSize: "12px", color: "#999" }}>
-        Komend uur per 15 min · daarna per uur (± 8 u vooruit)
+        {data?.hasBuienradar === true
+          ? "Komend 2 uur per 5 min · daarna per uur (± 8 u vooruit)"
+          : "Komend ... per uur (± 8 u vooruit)"}
       </p>
     </div>
   );

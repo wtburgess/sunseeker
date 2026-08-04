@@ -81,6 +81,31 @@ const CHUNK_SIZE = 50;
 const clamp = (v: number, min: number, max: number) =>
   Math.min(max, Math.max(min, v));
 
+/** Check of locatie in Nederland ligt (voor KNMI 5-min radar nowcast). */
+function isInNetherlands(lat: number, lon: number): boolean {
+  // Nederland bounding box (incl. wat marge voor nauwkeurigheid)
+  const NL_LAT_MIN = 50.7;
+  const NL_LAT_MAX = 53.6;
+  const NL_LON_MIN = 3.3;
+  const NL_LON_MAX = 7.3;
+  return lat >= NL_LAT_MIN && lat <= NL_LAT_MAX && lon >= NL_LON_MIN && lon <= NL_LON_MAX;
+}
+
+/** Haal KNMI 5-min regen-nowcast op via server API (eerste 2 uur). */
+async function fetchKnmiRainNowcast(point: LatLon): Promise<MinutelyData | null> {
+  try {
+    const res = await fetch(
+      `/api/weather/knmi-rain?lat=${point.lat}&lon=${point.lon}`,
+      { signal: AbortSignal.timeout(5000) } // 5s timeout
+    );
+    if (!res.ok) return null;
+    return await res.json();
+  } catch (e) {
+    console.debug("KNMI nowcast fetch failed:", e);
+    return null;
+  }
+}
+
 /** Sentinel-fout wanneer Open-Meteo de gratis rate-limit weigert (HTTP 429). */
 export const RATE_LIMIT = "RATE_LIMIT";
 
@@ -97,12 +122,14 @@ const DAILY_VARS =
 async function fetchForecastChunk(
   points: LatLon[],
   tripDays: number,
+  model: "gfs" | "knmi_seamless" = "gfs",
 ): Promise<DailyForecast[][]> {
   const lat = points.map((p) => p.lat).join(",");
   const lon = points.map((p) => p.lon).join(",");
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
-    `&daily=${DAILY_VARS}&forecast_days=${tripDays}&timezone=auto`;
+    `&daily=${DAILY_VARS}&forecast_days=${tripDays}&timezone=auto` +
+    `${model !== "gfs" ? `&models=${model}` : ""}`;
 
   const res = await fetch(url);
   assertOk(res);
@@ -133,15 +160,41 @@ async function fetchForecastChunk(
 async function fetchForecasts(
   points: LatLon[],
   tripDays: number,
+  model: "gfs" | "knmi_seamless" = "gfs",
 ): Promise<DailyForecast[][]> {
   const chunks: LatLon[][] = [];
   for (let i = 0; i < points.length; i += CHUNK_SIZE) {
     chunks.push(points.slice(i, i + CHUNK_SIZE));
   }
   const results = await Promise.all(
-    chunks.map((c) => fetchForecastChunk(c, tripDays)),
+    chunks.map((c) => fetchForecastChunk(c, tripDays, model)),
   );
   return results.flat();
+}
+
+/** Detecteer significante verschillen tussen GFS en KNMI modellen. */
+function detectDivergence(gfs: DailyForecast, knmi: DailyForecast): { diverges: boolean; reason?: string } {
+  const reasons: string[] = [];
+
+  // Temperatuur verschil > 2°C
+  if (Math.abs(gfs.tMax - knmi.tMax) > 2) {
+    reasons.push("temp");
+  }
+
+  // Neerslag verschil > 1mm
+  if (Math.abs(gfs.precip - knmi.precip) > 1) {
+    reasons.push("rain");
+  }
+
+  // Zonuren verschil > 1 uur
+  if (Math.abs(gfs.sunHours - knmi.sunHours) > 1) {
+    reasons.push("sun");
+  }
+
+  return {
+    diverges: reasons.length > 0,
+    reason: reasons.length > 0 ? reasons.join("+") : undefined,
+  };
 }
 
 /** Lichte dagverwachting per plaats, voor de kaart-tijdlijn en het filter. */
@@ -153,6 +206,12 @@ export type DayLite = {
   sunHours: number; // zonuren
   sunFraction: number;
   code: number;
+  // Model-vergelijking: wanneer GFS en KNMI divergeren
+  knmiTMax?: number; // KNMI-model temperatuur (als beschikbaar)
+  knmiPrecip?: number; // KNMI neerslag
+  knmiSunHours?: number; // KNMI zonuren
+  diverges?: boolean; // true als modellen significant verschillen
+  divergenceReason?: string; // "temp", "rain", "sun" of combinatie
 };
 
 /** Meerdaagse dagverwachting (lite) voor meerdere plaatsen, gebatcht. */
@@ -160,18 +219,38 @@ export async function fetchDailies(
   points: LatLon[],
   days: number,
 ): Promise<DayLite[][]> {
-  const forecasts = await fetchForecasts(points, days);
-  return forecasts.map((f) =>
-    f.map((d) => ({
-      date: d.date,
-      tMax: d.tMax,
-      precip: d.precip,
-      snow: d.snow,
-      sunHours: d.sunHours,
-      sunFraction: d.sunFraction,
-      code: d.code,
-    })),
-  );
+  // Parallel fetch: GFS (huidsge) + KNMI SEAMLESS (lokaal voor Benelux)
+  const [gfsForecasts, knmiForecasts] = await Promise.all([
+    fetchForecasts(points, days, "gfs"),
+    fetchForecasts(points, days, "knmi_seamless").catch(() => null), // KNMI fallback bij fout
+  ]);
+
+  return gfsForecasts.map((gfsDays, idx) => {
+    const knmiDays = knmiForecasts?.[idx];
+
+    return gfsDays.map((gfs, dayIdx) => {
+      const knmi = knmiDays?.[dayIdx];
+      const { diverges, reason } = knmi
+        ? detectDivergence(gfs, knmi)
+        : { diverges: false };
+
+      return {
+        date: gfs.date,
+        tMax: gfs.tMax,
+        precip: gfs.precip,
+        snow: gfs.snow,
+        sunHours: gfs.sunHours,
+        sunFraction: gfs.sunFraction,
+        code: gfs.code,
+        // KNMI vergelijking
+        knmiTMax: knmi?.tMax,
+        knmiPrecip: knmi?.precip,
+        knmiSunHours: knmi?.sunHours,
+        diverges,
+        divergenceReason: reason,
+      };
+    });
+  });
 }
 
 /**
@@ -534,6 +613,18 @@ const RAIN_QUARTERS = 5;
  * één API-call.
  */
 export async function fetchMinutelyForecast(point: LatLon): Promise<MinutelyData> {
+  // Probeer eerst KNMI (5-min, alleen Nederland, eerste 2h) → fallback naar Open-Meteo (15-min global, 6h)
+  if (isInNetherlands(point.lat, point.lon)) {
+    try {
+      const knmiResult = await fetchKnmiRainNowcast(point);
+      if (knmiResult) return knmiResult; // KNMI gelukt, gebruik die
+    } catch (e) {
+      // KNMI fallback naar Open-Meteo, loggen (console) maar niet fatal
+      console.debug("KNMI 5-min fallback naar Open-Meteo:", e);
+    }
+  }
+
+  // Open-Meteo fallback (altijd beschikbaar, global)
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
     `&minutely_15=precipitation` +
