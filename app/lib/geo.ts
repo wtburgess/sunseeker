@@ -113,8 +113,48 @@ export async function reverseGeocode(
   if (!res.ok) return null;
 
   const d = await res.json();
-  const place = d.city || d.locality || d.principalSubdivision;
+  // De gemeente (OSM adminLevel 8) is doorgaans de juiste plaatsnaam. BigDataCloud
+  // geeft in `city` vaak de grotere naburige stad terug — bv. "Antwerpen" terwijl je
+  // eigenlijk in Edegem, Mortsel of Kalmthout staat. Waar het gemeente-niveau
+  // ontbreekt (sommige grootstadscentra) vallen we terug op city/locality/regio.
+  const admin = (d.localityInfo?.administrative ?? []) as {
+    name?: string;
+    adminLevel?: number;
+  }[];
+  const municipality = admin.find((a) => a.adminLevel === 8)?.name;
+  // Soms is `city` eigenlijk de regionaam (bv. Brussel: `city` == de regio
+  // "Brussels Hoofdstedelijk Gewest"). Dan geeft `locality` de echte plaats.
+  const cityIsRegion = d.city && d.city === d.principalSubdivision;
+  const place =
+    municipality ||
+    (cityIsRegion ? d.locality || d.city : d.city || d.locality) ||
+    d.principalSubdivision;
   return place || null;
+}
+
+/**
+ * Benaderende locatie via het IP-adres (ipwho.is — gratis, geen sleutel, CORS-
+ * vriendelijk, HTTPS). Stads-nauwkeurig en zónder toestemmingsvraag, handig als
+ * de toestellocatie uitstaat. Geeft null bij mislukking.
+ */
+export async function fetchIpLocation(): Promise<{
+  lat: number;
+  lon: number;
+  name: string;
+} | null> {
+  try {
+    const res = await fetch("https://ipwho.is/");
+    if (!res.ok) return null;
+    const d = await res.json();
+    if (!d || d.success === false || typeof d.latitude !== "number") return null;
+    return {
+      lat: d.latitude,
+      lon: d.longitude,
+      name: d.city || d.region || d.country || "Mijn locatie",
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Afstand in kilometer tussen twee punten (Haversine). */

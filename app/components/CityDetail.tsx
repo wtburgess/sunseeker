@@ -3,11 +3,13 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import { HourDetail } from "./HourDetail";
+import { RainButton } from "./RainButton";
 import {
   conditionFromDay,
   fetchDailyDetail,
   type DailyDetail,
 } from "../lib/weather";
+import { distanceKm } from "../lib/geo";
 
 /** Aantal dagen in het detailoverzicht. */
 const DAYS = 14;
@@ -28,17 +30,37 @@ const nl1 = (n: number) =>
 /** Volledig detailoverzicht per dag voor één plaats (opent over de kaart). */
 export function CityDetail({
   place,
+  reference,
   isFavorite,
   onToggleFavorite,
-  onOpenLegend,
   onClose,
 }: {
   place: { name: string; lat: number; lon: number };
+  reference?: { name: string; lat: number; lon: number } | null;
   isFavorite: boolean;
   onToggleFavorite: () => void;
-  onOpenLegend: () => void;
   onClose: () => void;
 }) {
+  // Afstand tot de referentiestad (het kaartmiddelpunt / gezochte plaats).
+  // Enkel tonen als die er is én een andere plaats is dan deze.
+  const dist =
+    reference && distanceKm(place, reference) > 0
+      ? distanceKm(place, reference)
+      : null;
+
+  // Opent de standaard routeplanner met een route naar deze bekeken plaats.
+  // We laten het startpunt weg, zodat de routeplanner altijd de huidige locatie
+  // van het toestel als vertrek gebruikt. Op iOS Apple Maps, elders Google Maps.
+  const openRoute = () => {
+    const to = `${place.lat},${place.lon}`;
+    const isIOS =
+      typeof navigator !== "undefined" &&
+      /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const url = isIOS
+      ? `https://maps.apple.com/?daddr=${to}&dirflg=d`
+      : `https://www.google.com/maps/dir/?api=1&destination=${to}&travelmode=driving`;
+    window.open(url, "_blank", "noopener");
+  };
   const [days, setDays] = useState<DailyDetail[] | null>(null);
   const [error, setError] = useState(false);
   // Aangeklikte dag → uur-detail (over de daglijst).
@@ -85,14 +107,33 @@ export function CityDetail({
             }`}
           />
         </button>
+        <RainButton place={place} />
         <button
-          onClick={onOpenLegend}
-          aria-label="Uitleg weericonen"
+          onClick={onClose}
+          aria-label="Sluiten"
           className="w-10 h-10 -mr-1 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
         >
-          <Icon name="info" className="text-[24px] text-primary" />
+          <Icon name="close" className="text-[24px]" />
         </button>
       </div>
+
+      {/* Afstand tot de referentiestad + knop naar de routeplanner. */}
+      {dist != null && reference && (
+        <div className="flex items-center justify-between gap-2 px-3 py-2 shrink-0 border-b-2 border-outline-variant">
+          <span className="text-[15px] text-on-surface-variant">
+            Afstand tot {reference.name}:{" "}
+            <span className="font-semibold text-on-surface">{dist} km</span>
+          </span>
+          <button
+            onClick={openRoute}
+            aria-label={`Route naar ${reference.name}`}
+            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-on-primary font-headline-sm text-[14px] uppercase active-press"
+          >
+            <Icon name="directions" filled className="text-[20px]" />
+            Route
+          </button>
+        </div>
+      )}
 
       {/* Lijst per dag */}
       <div className="flex-grow overflow-y-auto">
@@ -119,7 +160,6 @@ export function CityDetail({
           date={openDate}
           isFavorite={isFavorite}
           onToggleFavorite={onToggleFavorite}
-          onOpenLegend={onOpenLegend}
           onClose={() => setOpenDate(null)}
         />
       )}

@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { Icon } from "./Icon";
 
 type Row = { icon: string; name: string; rule: string };
@@ -77,7 +78,7 @@ function InfoRow({
   icon: string;
   iconColor?: string;
   title: string;
-  text: string;
+  text: ReactNode;
 }) {
   return (
     <div className="flex items-center gap-3 px-4 py-2.5 border-b border-outline-variant">
@@ -113,6 +114,13 @@ export function Legend({ onClose }: { onClose: () => void }) {
         <h2 className="flex-grow font-headline-md text-headline-md uppercase tracking-wide">
           Info
         </h2>
+        <button
+          onClick={onClose}
+          aria-label="Sluiten"
+          className="w-10 h-10 -mr-1 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
+        >
+          <Icon name="close" className="text-[24px]" />
+        </button>
       </div>
 
       <div className="flex-grow overflow-y-auto">
@@ -154,8 +162,17 @@ export function Legend({ onClose }: { onClose: () => void }) {
         <SectionTitle>Filter</SectionTitle>
         <InfoRow
           icon="tune"
-          title="Temperatuur, zon en regen"
-          text="Stel een minimum- en maximumtemperatuur, minimum zonuren en een maximum aan regen in. Plaatsen die niet voldoen vervagen en krijgen een schuine streep — je eigen locatie blijft zichtbaar maar wordt wel doorgestreept."
+          title="Verfijn de kaart"
+          text={
+            <>
+              Toon alleen plaatsen die passen bij het weer dat jij zoekt: kies
+              een straal (afstand), een min.- en max.-temperatuur, minimum
+              zonuren, en een minimum of maximum aan regen en sneeuw. Met de{" "}
+              <strong>presets</strong> (zon, regen, sneeuw) zet je alles in één
+              tik goed; Reset wist je keuzes. Plaatsen die niet aan je filter
+              voldoen, vervagen (grijs bolletje).
+            </>
+          }
         />
       </div>
     </div>

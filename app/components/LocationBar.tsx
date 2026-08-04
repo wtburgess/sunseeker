@@ -67,6 +67,7 @@ export function LocationBar({
   // Onderdrukt één zoekronde direct na een keuze (anders opent de lijst meteen
   // opnieuw doordat het invulveld op de gekozen naam wordt gezet).
   const suppress = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Vanaf 2 tekens zoeken we voorstellen; daaronder tonen we de favorieten.
   const typing = value.trim().length >= 2;
@@ -104,12 +105,14 @@ export function LocationBar({
     setOpen(false);
     setSuggestions([]);
     setActive(-1);
+    inputRef.current?.blur();
     onSelectPlace(place);
   }
 
   function chooseFavorite(f: Favorite) {
     suppress.current = true;
     setOpen(false);
+    inputRef.current?.blur();
     onSelectFavorite(f);
   }
 
@@ -163,6 +166,7 @@ export function LocationBar({
         {/* Midden: invulveld met type-ahead/favorieten eronder + ster rechts */}
         <div className="relative flex-grow min-w-0">
           <input
+            ref={inputRef}
             value={value}
             onChange={(e) => onChange(e.target.value)}
             onKeyDown={onKeyDown}

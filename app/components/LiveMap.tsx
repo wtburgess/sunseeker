@@ -1,9 +1,19 @@
 "use client";
 
 import "leaflet/dist/leaflet.css";
+
+// Zwaardere regen-alert pulsatie
+const rainAlertStyle = `
+  @keyframes rainfAlert {
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(157, 61, 34, 0.7); }
+    50% { opacity: 0.3; box-shadow: 0 0 8px 4px rgba(200, 80, 50, 0.5); }
+  }
+  .rain-alert { animation: rainfAlert 1.5s ease-in-out infinite; }
+`;
 import L from "leaflet";
 import { useCallback, useEffect, useRef, useState, type Ref } from "react";
 import {
+  Circle,
   MapContainer,
   Marker,
   TileLayer,
@@ -11,17 +21,23 @@ import {
   useMapEvents,
 } from "react-leaflet";
 import { Icon } from "./Icon";
+import { RainOverlay } from "./RainOverlay";
 import {
   conditionFromCurrent,
   conditionFromDay,
   fetchCurrent,
   fetchCurrents,
   fetchDailies,
+  fetchMinutelyForecast,
+  RATE_LIMIT,
   type CurrentWeather,
   type DayLite,
+  type MinutelyData,
   type WeatherCondition,
 } from "../lib/weather";
 import { type City } from "../lib/cities";
+import { COUNTRY_LABELS } from "../lib/countryLabels";
+import { REGION_LABELS } from "../lib/regionLabels";
 import { type Favorite } from "../lib/favorites";
 import { distanceKm } from "../lib/geo";
 import { weatherGlyphSvg } from "../lib/weatherGlyphs";
@@ -43,6 +59,16 @@ const FAV_ICON_SCALE = 1.2;
 /** Lichte vergroting voor de normale kaartweergave — subtieler dan bij de
  *  favorieten, want hier staan er veel meer iconen tegelijk. */
 const MAP_ICON_SCALE = 1.15;
+
+/** Grenzen voor de max-afstand-schuifbalk (km). MAX = onbeperkt (geen cirkel). */
+const FILTER_DIST_MIN = 10;
+const FILTER_DIST_MAX = 3000;
+/** Niet-lineaire stappen: fijn dichtbij, grover naarmate de afstand groeit.
+ *  Eerste = FILTER_DIST_MIN, laatste = FILTER_DIST_MAX (onbeperkt). */
+const DIST_STEPS = [
+  10, 20, 30, 40, 50, 75, 100, 150, 200, 300, 400, 500, 750, 1000, 1500, 2000,
+  2500, 3000,
+];
 /**
  * Max. aantal plaatsen tegelijk op de kaart. Rustiger bij lage/normale zoom
  * (minder druk, past bij de grotere iconen), maar bij inzoomen mogen er nog
@@ -50,24 +76,51 @@ const MAP_ICON_SCALE = 1.15;
  * naast Antwerpen) en oogt een land als Frankrijk niet leeg.
  */
 function maxNearbyForZoom(z: number): number {
-  if (z >= 11) return 90;
-  if (z >= 10) return 65;
-  if (z >= 9) return 48;
-  if (z >= 8) return 30; // standaard opstart-zoom: rustiger beeld
-  return 22; // ver uitgezoomd (continentaal overzicht)
+  if (z >= 12) return 90;
+  if (z >= 11) return 70;
+  if (z >= 10) return 50;
+  if (z >= 9) return 35;
+  if (z >= 8) return 25;
+  if (z >= 7) return 18;
+  if (z >= 6) return 12;
+  if (z >= 5) return 8;
+  if (z >= 4) return 5;
+  return 3; // ver uitgezoomd (continentaal overzicht)
 }
 /** Minimale afstand (px) tussen twee getoonde iconen, om overlap te vermijden.
  *  Iets ruimer dan het icoon breed is (bij MAP_ICON_SCALE), zodat ze nooit
  *  raken. */
 const MIN_PX = 56;
 /** Aantal dagen in de tijdlijn (naast 'Nu'). */
-const TIMELINE_DAYS = 10;
+const TIMELINE_DAYS = 14;
 
 const fmtWeekday = (iso: string) =>
   new Date(iso).toLocaleDateString("nl-BE", { weekday: "short" });
 const fmtDayMonth = (iso: string) => {
   const d = new Date(iso);
   return `${d.getDate()}/${d.getMonth() + 1}`;
+};
+
+/** Bereken bereik voor "dit weekend" (komende zaterdag–zondag). */
+const thisWeekend = (days: DayLite[]): { from: number; to: number } | null => {
+  const now = new Date();
+  const today = now.getDay();
+  let daysUntilSat = (6 - today + 7) % 7;
+  if (daysUntilSat === 0) daysUntilSat = 7; // als vandaag zaterdag is, volgende zaterdag
+  return daysUntilSat < days.length && daysUntilSat + 1 < days.length
+    ? { from: daysUntilSat, to: daysUntilSat + 1 }
+    : null;
+};
+
+/** Bereken bereik voor "volgende week" (komende maandag–zondag). */
+const nextWeek = (days: DayLite[]): { from: number; to: number } | null => {
+  const now = new Date();
+  const today = now.getDay();
+  let daysUntilMon = (1 - today + 7) % 7;
+  if (daysUntilMon === 0) daysUntilMon = 7; // als vandaag maandag is, volgende maandag
+  return daysUntilMon < days.length && daysUntilMon + 6 < days.length
+    ? { from: daysUntilMon, to: Math.min(daysUntilMon + 6, days.length - 1) }
+    : null;
 };
 
 const ACCENT = "#9d3d22";
@@ -146,7 +199,7 @@ function currentIcon(
       // achter het icoon.
       `<span style="position:absolute;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;` +
       `font-family:'Archivo Narrow',sans-serif;font-weight:800;font-size:${tempPx}px;line-height:1;color:#fff;` +
-      `text-shadow:0 1px 2px rgba(0,0,0,.55),0 0 3px rgba(0,0,0,.35)">${Math.round(temp)}°</span>` +
+      `text-shadow:0 1px 2px rgba(0,0,0,.55),0 0 3px rgba(0,0,0,.35)${temp < 0 ? ";margin-top:2px" : ""}">${Math.round(temp)}°</span>` +
       `</div>` +
       slash +
       `</div>`,
@@ -168,6 +221,24 @@ function placeIcon(
   dimmed: boolean,
   scale = 1,
 ) {
+  // Plaatsen die niet aan het filter voldoen: geen vol weericoon meer, maar een
+  // klein grijs puntje. Dat ontrommelt de kaart maximaal en toont toch subtiel
+  // dat er een (uitgefilterde) plaats zit.
+  if (dimmed) {
+    const dot = Math.round(7 * scale);
+    const box = dot + 4;
+    const c = box / 2;
+    const r = dot / 2;
+    return L.divIcon({
+      className: "",
+      html:
+        `<svg width="${box}" height="${box}" viewBox="0 0 ${box} ${box}">` +
+        `<circle cx="${c}" cy="${c}" r="${r}" fill="#9aa0a6"/></svg>`,
+      iconSize: [box, box],
+      iconAnchor: [Math.round(c), Math.round(c)],
+    });
+  }
+
   const glyphPx = Math.round(38 * scale);
   // Bij volle zon de compacte kaart-variant (grote schijf, korte stralen) —
   // die laat, anders dan de gewone sky_0, genoeg solide vlak vrij om de
@@ -177,13 +248,8 @@ function placeIcon(
     weatherGlyphSvg(glyphName, glyphPx, "") ??
     `<span style="font-family:'Material Symbols Outlined';font-size:${Math.round(34 * scale)}px;` +
       `font-variation-settings:'FILL' 1;line-height:1;color:#6b7075">${cond.icon}</span>`;
-  const dimCss = dimmed ? "filter:grayscale(1) opacity(0.5);" : "";
   const w = Math.round(44 * scale);
   const tempPx = Math.round(15 * scale);
-  const slash = dimmed
-    ? `<svg width="${w}" height="${Math.round(glyphPx * 0.9)}" viewBox="0 0 44 42" style="position:absolute;top:-1px;left:0;pointer-events:none">` +
-      `<line x1="8" y1="36" x2="36" y2="6" stroke="#6b7075" stroke-width="5" stroke-linecap="round"/></svg>`
-    : "";
   // Temperatuur bovenop het icoon (niet eronder): wit met een donkere schaduw,
   // zodat het cijfer op elke ondergrond (amber zon, grijze wolk, blauwe regen…)
   // goed afsteekt. Scheelt een hele tekstregel, dus de naam komt vlak onder het
@@ -191,7 +257,7 @@ function placeIcon(
   return L.divIcon({
     className: "",
     html:
-      `<div style="position:relative;width:${w}px;height:${glyphPx}px;display:flex;align-items:center;justify-content:center;${dimCss}">` +
+      `<div style="position:relative;width:${w}px;height:${glyphPx}px;display:flex;align-items:center;justify-content:center;">` +
       iconHtml +
       // z-index nodig: Leaflet zet via `.leaflet-map-pane svg { z-index: 200 }`
       // élke SVG (ook onze glyph, als flex-item) boven een gewoon absolute
@@ -199,8 +265,7 @@ function placeIcon(
       // verdwijnen ondanks dat de span later in de DOM staat.
       `<span style="position:absolute;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;` +
       `font-family:'Archivo Narrow',sans-serif;font-weight:800;font-size:${tempPx}px;line-height:1;color:#fff;` +
-      `text-shadow:0 1px 2px rgba(0,0,0,.55),0 0 3px rgba(0,0,0,.35)">${Math.round(temp)}°</span>` +
-      slash +
+      `text-shadow:0 1px 2px rgba(0,0,0,.55),0 0 3px rgba(0,0,0,.35)${temp < 0 ? ";margin-top:2px" : ""}">${Math.round(temp)}°</span>` +
       `</div>`,
     iconSize: [w, glyphPx],
     iconAnchor: [Math.round(w / 2), Math.round(glyphPx / 2)],
@@ -237,6 +302,45 @@ function nameIcon(name: string, offsetY: number, scale = 1) {
       `text-shadow:0 0 3px #fff,0 0 3px #fff,0 0 3px #fff,0 0 3px #fff">${name}</div>`,
     iconSize: [w, h],
     iconAnchor: [Math.round(w / 2), offsetY],
+  });
+}
+
+/** Land-label (Nederlands): groot, uppercase, gespatieerd en gedempt grijs met een
+ *  witte gloed — subtiel op de achtergrond, voor oriëntatie bij uitgezoomd niveau.
+ *  Schaalt af naarmate je uitzoemt. */
+function countryLabelIcon(name: string, zoom: number) {
+  const scale = Math.max(0.4, Math.min(1, (zoom - 2) / 4)); // schaal van 0.4–1.0 voor zoom 2–6
+  const fontSize = Math.round(15 * scale);
+  const w = Math.round(240 * scale);
+  const h = Math.round(20 * scale);
+  return L.divIcon({
+    className: "",
+    html:
+      `<div style="white-space:nowrap;text-align:center;font-family:'Archivo Narrow',sans-serif;` +
+      `font-weight:700;font-size:${fontSize}px;letter-spacing:0.14em;text-transform:uppercase;line-height:1;` +
+      `color:rgba(20,20,20,0.5);` +
+      `text-shadow:0 0 4px #fff,0 0 4px #fff,0 0 4px #fff,0 0 4px #fff">${name}</div>`,
+    iconSize: [w, h],
+    iconAnchor: [Math.round(w / 2), Math.round(h / 2)],
+  });
+}
+
+/** Regio-label (Nederlands): kleiner en lichter dan een land-label, schaalt met zoom — zit qua
+ *  gewicht tussen land en stad in, voor oriëntatie op regionaal zoomniveau. */
+function regionLabelIcon(name: string, zoom: number) {
+  const scale = Math.max(0.5, Math.min(1, (zoom - 5) / 3)); // schaal van 0.5–1.0 voor zoom 5–8
+  const fontSize = Math.round(12 * scale);
+  const w = Math.round(200 * scale);
+  const h = Math.round(16 * scale);
+  return L.divIcon({
+    className: "",
+    html:
+      `<div style="white-space:nowrap;text-align:center;font-family:'Archivo Narrow',sans-serif;` +
+      `font-weight:600;font-size:${fontSize}px;letter-spacing:0.1em;text-transform:uppercase;line-height:1;` +
+      `color:rgba(30,30,30,0.5);` +
+      `text-shadow:0 0 4px #fff,0 0 4px #fff,0 0 4px #fff,0 0 4px #fff">${name}</div>`,
+    iconSize: [w, h],
+    iconAnchor: [Math.round(w / 2), Math.round(h / 2)],
   });
 }
 
@@ -290,22 +394,43 @@ function thinByPixels(cities: City[], map: L.Map, minPx: number, max: number) {
  */
 function MapEngine({
   center,
+  locateNonce,
   onLoaded,
   onLoading,
+  onSlowNetwork,
+  onRateLimited,
 }: {
   center: Coords;
+  locateNonce: number;
   onLoaded: (places: NearbyPlace[]) => void;
   onLoading: (loading: boolean) => void;
+  onSlowNetwork: (isSlow: boolean) => void;
+  onRateLimited: (limited: boolean) => void;
 }) {
   const map = useMap();
   const cache = useRef<Map<string, { cur: CurrentWeather; days: DayLite[] }>>(
     new Map(),
   );
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const slowTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const reqId = useRef(0);
+  // Intro-zoom (continentaal → locatie) mag maar één keer draaien; zolang hij
+  // loopt onderdrukken we het gewone bijladen bij elke tussenliggende zoom-stap.
+  // Laatst afgespeelde locatie-nonce: de intro-zoom speelt bij het opstarten en
+  // telkens als de locatieknop een nieuwe nonce doorgeeft (niet bij een zoekopdracht).
+  const lastIntroNonce = useRef(-1);
+  const introRunning = useRef(false);
 
   const load = useCallback(async () => {
     const id = ++reqId.current;
+    clearTimeout(slowTimer.current);
+    onSlowNetwork(false);
+
+    // Na 5 seconden: als nog steeds aan het laden, schakel naar favorieten
+    slowTimer.current = setTimeout(() => {
+      if (id === reqId.current) onSlowNetwork(true);
+    }, 5000);
+
     const b = map.getBounds();
     const params = new URLSearchParams({
       minLat: String(b.getSouth()),
@@ -345,12 +470,19 @@ function MapEngine({
           return { city: c, cur: e.cur, days: e.days };
         }),
       );
-    } catch {
-      // Bijladen is optioneel; stil falen.
+      onRateLimited(false); // gelukt → eventuele limiet-melding weg
+    } catch (e) {
+      // Bijladen is optioneel; stil falen — behalve bij de rate-limit (429),
+      // die melden we zodat de lege kaart verklaard wordt.
+      if (e instanceof Error && e.message === RATE_LIMIT) onRateLimited(true);
     } finally {
-      if (id === reqId.current) onLoading(false);
+      if (id === reqId.current) {
+        onLoading(false);
+        clearTimeout(slowTimer.current);
+        onSlowNetwork(false);
+      }
     }
-  }, [map, onLoaded, onLoading]);
+  }, [map, onLoaded, onLoading, onSlowNetwork, onRateLimited]);
 
   const schedule = useCallback(() => {
     clearTimeout(timer.current);
@@ -359,8 +491,12 @@ function MapEngine({
 
   // Slepen/zoomen door de gebruiker → herladen (met debounce).
   useMapEvents({
-    moveend: () => schedule(),
-    zoomend: () => schedule(),
+    moveend: () => {
+      if (!introRunning.current) schedule();
+    },
+    zoomend: () => {
+      if (!introRunning.current) schedule();
+    },
   });
 
   // Nieuw middelpunt: kadreren, en pas laden zodra de kaart is uitgekaderd.
@@ -371,27 +507,70 @@ function MapEngine({
       done = true;
       load();
     };
-    const b = rectBounds(center);
-    map.once("moveend", runOnce);
     // Bij de eerste render kan de kaartcontainer nog geen afmetingen hebben;
     // dan berekent fitBounds een verkeerde (max-)zoom. invalidateSize() leest de
     // grootte opnieuw in vlak vóór het kadreren, zodat we altijd het regionale
     // overzicht krijgen i.p.v. volledig ingezoomd te starten.
     map.invalidateSize();
-    map.fitBounds(
-      [
-        [b.south, b.west],
-        [b.north, b.east],
-      ],
-      { padding: [16, 16] },
-    );
+    const b = rectBounds(center);
+    const bounds: [[number, number], [number, number]] = [
+      [b.south, b.west],
+      [b.north, b.east],
+    ];
+    const frame = () => map.fitBounds(bounds, { padding: [16, 16] });
+
+    // Intro-zoom afspelen bij het opstarten én telkens als de locatieknop een
+    // nieuwe nonce doorgeeft — maar niet bij een gewone zoekopdracht (die verandert
+    // wél het middelpunt, maar niet de nonce). lastIntroNonce wordt pas bij het
+    // afronden bijgewerkt (StrictMode-veilig: een afgebroken intro speelt opnieuw).
+    const playIntro = locateNonce !== lastIntroNonce.current;
+
+    if (playIntro) {
+      introRunning.current = true;
+      // Toon eerst zoom 10 (eigen locatie), wacht ~1 s, en zoom dan in ÉÉN vloeiende
+      // beweging in naar 12 met Leaflets pinch-achtige CSS-transform-zoom (die op iOS
+      // wél soepel hertekent, i.t.t. de rAF-flyTo). We laden het weer één keer, op de
+      // eind-zoom (zie finish) — dat scheelt API-calls (rate-limit) en de iconen
+      // verschijnen netjes zodra de kaart tot rust komt.
+      map.setView([center.lat, center.lon], 10, { animate: false });
+
+      let settled = false;
+      let timer: ReturnType<typeof setTimeout>;
+      let fallback: ReturnType<typeof setTimeout>;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        clearTimeout(fallback);
+        map.off("zoomend", finish);
+        load(); // iconen op de eind-zoom
+        lastIntroNonce.current = locateNonce;
+        introRunning.current = false;
+      };
+      // ~1 seconde zoom 10 tonen, dan de vloeiende zoom naar 12.
+      timer = setTimeout(() => {
+        map.once("zoomend", finish);
+        fallback = setTimeout(finish, 2000); // vangnet als zoomend niet vuurt
+        map.setView([center.lat, center.lon], 12, { animate: true });
+      }, 1000);
+      return () => {
+        clearTimeout(timer);
+        clearTimeout(fallback);
+        map.off("zoomend", finish);
+        introRunning.current = false;
+      };
+    }
+
+    // Zoekopdracht (geen intro): meteen kaderen op de regio rond de plaats.
+    map.once("moveend", runOnce);
+    frame();
     // Vangnet als de kaart al op die plek stond (geen beweging → geen moveend).
     const fallback = setTimeout(runOnce, 500);
     return () => {
       clearTimeout(fallback);
       map.off("moveend", runOnce);
     };
-  }, [center, map, load]);
+  }, [center, locateNonce, map, load]);
 
   // Debounce-timer opruimen bij unmount.
   useEffect(() => () => clearTimeout(timer.current), []);
@@ -424,25 +603,42 @@ type FavPlace = { fav: Favorite; cur: CurrentWeather; days: DayLite[] };
 
 export default function LiveMap({
   center,
+  locateNonce,
   label,
   favorites,
   onSelect,
 }: {
   center: Coords;
+  locateNonce: number;
   label: string;
   favorites: Favorite[];
   onSelect: (place: { name: string; lat: number; lon: number }) => void;
 }) {
+  // Inject regen-alert animatie
+  useEffect(() => {
+    const style = document.createElement("style");
+    style.textContent = rainAlertStyle;
+    document.head.appendChild(style);
+    return () => style.remove();
+  }, []);
+
   const [cur, setCur] = useState<CurrentWeather | null>(null);
   const [centerDays, setCenterDays] = useState<DayLite[]>([]);
   const [nearby, setNearby] = useState<NearbyPlace[]>([]);
   const [loading, setLoading] = useState(false);
+  const [slowNetworkDetected, setSlowNetworkDetected] = useState(false);
+  // True zodra Open-Meteo de rate-limit weigert (429): dan tonen we een melding
+  // i.p.v. een onverklaarbaar lege kaart.
+  const [rateLimited, setRateLimited] = useState(false);
+  const [minutelyData, setMinutelyData] = useState<MinutelyData | null>(null);
+  const [showRainOverlay, setShowRainOverlay] = useState(false);
+  const [showWeatherIcons, setShowWeatherIcons] = useState(true);
   // Tijdlijn: 'now' of een dag-index; playing = automatisch doorlopen.
   const [step, setStep] = useState<Step>("now");
   const [playing, setPlaying] = useState(false);
   // Kaart-verwijzing + actueel zoomniveau (voor de eigen zoombediening).
   const mapRef = useRef<L.Map | null>(null);
-  const [zoom, setZoom] = useState(8);
+  const [zoom, setZoom] = useState(10);
   // "Alleen favorieten"-weergave: enkel de bewaarde plaatsen (met hun weer).
   const [favoritesOnly, setFavoritesOnly] = useState(false);
   const [favPlaces, setFavPlaces] = useState<FavPlace[]>([]);
@@ -452,6 +648,16 @@ export default function LiveMap({
   const [maxTemp, setMaxTemp] = useState(40);
   const [minSun, setMinSun] = useState(0);
   const [maxRain, setMaxRain] = useState(15);
+  const [minRain, setMinRain] = useState(0);
+  const [minSnow, setMinSnow] = useState(0);
+  // Max. afstand vanaf de gezochte plaats (10–3000 km); MAX = onbeperkt.
+  const [maxDist, setMaxDist] = useState(FILTER_DIST_MAX);
+  // Periode-bereik: null = dag-per-dag modus; {from, to} = index-bereik in centerDays.
+  const [range, setRange] = useState<{ from: number; to: number } | null>(null);
+  // Minstens X goede dagen in de geselecteerde periode.
+  const [minGoodDays, setMinGoodDays] = useState(1);
+  // Divergence-modal: welke dag divergeert?
+  const [divergenceDay, setDivergenceDay] = useState<(typeof centerDays)[0] | null>(null);
 
   // Actueel weer + meerdaagse verwachting op de eigen locatie ophalen.
   useEffect(() => {
@@ -470,12 +676,40 @@ export default function LiveMap({
     };
   }, [center]);
 
+  // Minutely regenvoorzpelling ophalen
+  useEffect(() => {
+    let active = true;
+    fetchMinutelyForecast(center)
+      .then((data) => {
+        if (!active) return;
+        setMinutelyData(data);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [center]);
+
   // Nieuw middelpunt → terug naar 'nu' en stoppen met afspelen. De
   // favorieten-weergave blijft bewust staan tot je zelf op het hartje tikt.
   useEffect(() => {
     setStep("now");
     setPlaying(false);
+    setSlowNetworkDetected(false);
   }, [center]);
+
+  // Langzaam netwerk gedetecteerd → auto-switch naar favorieten als beschikbaar
+  useEffect(() => {
+    if (slowNetworkDetected && favorites.length > 0 && !favoritesOnly) {
+      setFavoritesOnly(true);
+    }
+  }, [slowNetworkDetected, favorites.length, favoritesOnly]);
+
+  // Regen alert: als er regen voorspeld wordt in de komende uren
+  const hasRainExpected = minutelyData && (
+    minutelyData.nextHour.some((m) => m.precip > 0.1) ||
+    minutelyData.nextHours.some((h) => h.precip > 0.1)
+  );
 
   // Weer (nu + meerdaags) van de favorieten ophalen zodra de favorieten-weergave
   // aanstaat; buiten die weergave houden we niets bij.
@@ -542,14 +776,44 @@ export default function LiveMap({
 
   // Filter: max-regen op zijn hoogste stand = geen limiet.
   const effMaxRain = maxRain >= 15 ? Infinity : maxRain;
+  const distLimited = maxDist < FILTER_DIST_MAX;
+  const rangeLimited = range !== null;
   const filterActive =
-    minTemp > 0 || maxTemp < 40 || minSun > 0 || maxRain < 15;
-  const passesFilter = (d: DayLite | undefined) =>
+    minTemp > 0 ||
+    maxTemp < 40 ||
+    minSun > 0 ||
+    maxRain < 15 ||
+    minRain > 0 ||
+    minSnow > 0 ||
+    distLimited ||
+    rangeLimited;
+  // Weer-gebonden voorwaarden (afstand komt er los bij, want die hangt van de
+  // plaats af, niet van de dag).
+  const passesWeather = (d: DayLite | undefined) =>
     !d ||
     (d.tMax >= minTemp &&
       d.tMax <= maxTemp &&
       d.sunHours >= minSun &&
-      d.precip <= effMaxRain);
+      d.precip <= effMaxRain &&
+      d.precip >= minRain &&
+      (d.snow ?? 0) >= minSnow);
+
+  // Telt hoeveel goede dagen in het bereik vallen.
+  const countGoodDays = (days: DayLite[]): number => {
+    if (!range) return passesWeather(days[0]) ? 1 : 0;
+    let count = 0;
+    for (let i = range.from; i <= range.to && i < days.length; i++) {
+      if (passesWeather(days[i])) count++;
+    }
+    return count;
+  };
+
+  const passesFilter = (d: DayLite | undefined, distKm = 0, days?: DayLite[]) => {
+    if (!passesWeather(d) || (distLimited && distKm > maxDist)) return false;
+    // In periode-modus: plaats moet genoeg goede dagen hebben.
+    if (rangeLimited && days) return countGoodDays(days) >= minGoodDays;
+    return true;
+  };
 
   // De eigen locatie volgt óók het filter, maar wordt niet grijs — enkel
   // doorgestreept als hij niet voldoet.
@@ -575,7 +839,8 @@ export default function LiveMap({
     <div className="absolute inset-0">
       <MapContainer
         center={[center.lat, center.lon]}
-        zoom={8}
+        zoom={10}
+        zoomSnap={0.25}
         scrollWheelZoom
         zoomControl={false}
         style={{ height: "100%", width: "100%" }}
@@ -586,11 +851,102 @@ export default function LiveMap({
           url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager_nolabels/{z}/{x}/{y}{r}.png"
           subdomains="abcd"
         />
+        {/* Eigen Nederlandse land-labels — enkel bij uitgezoomd (≤ zoom 6), voor
+            oriëntatie op het continentale/regionale overzicht. Getekend i.p.v. de
+            anderstalige CARTO-labeltegels, en verborgen zodra je inzoomt (dan tonen
+            de eigen stad-labels de context, geen dubbele namen). */}
+        {zoom <= 6 &&
+          COUNTRY_LABELS.map((c) => (
+            <Marker
+              key={`country-${c.name}`}
+              position={[c.lat, c.lon]}
+              icon={countryLabelIcon(c.name, zoom)}
+              interactive={false}
+              zIndexOffset={-300}
+            />
+          ))}
+
+        {/* Regio-labels (Nederlands, gecureerd) — op regionaal zoomniveau (6–8),
+            tussen het land-overzicht en het ingezoomde stad-niveau in. */}
+        {zoom >= 6 &&
+          zoom <= 8 &&
+          REGION_LABELS.map((rg) => (
+            <Marker
+              key={`region-${rg.name}-${rg.lat}`}
+              position={[rg.lat, rg.lon]}
+              icon={regionLabelIcon(rg.name, zoom)}
+              interactive={false}
+              zIndexOffset={-250}
+            />
+          ))}
         <MapEngine
           center={center}
+          locateNonce={locateNonce}
           onLoaded={setNearby}
           onLoading={setLoading}
+          onSlowNetwork={setSlowNetworkDetected}
+          onRateLimited={setRateLimited}
         />
+
+        {/* Omtrekcirkel van de max-afstand vanaf de gezochte plaats. */}
+        {filterActive && distLimited && (
+          <Circle
+            center={[center.lat, center.lon]}
+            radius={maxDist * 1000}
+            interactive={false}
+            pathOptions={{
+              color: ACCENT,
+              weight: 2,
+              dashArray: "6 6",
+              fill: false,
+            }}
+          />
+        )}
+
+        {/* Langzaam netwerk: boodschap en auto-switch naar favorieten */}
+        {slowNetworkDetected && !favoritesOnly && (
+          <div style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: "rgba(255, 255, 255, 0.92)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+            pointerEvents: "none",
+          }}>
+            <div style={{
+              textAlign: "center",
+              padding: "2rem",
+              maxWidth: "300px",
+            }}>
+              <p style={{ fontSize: "16px", fontWeight: "600", marginBottom: "0.5rem" }}>
+                Langzaam netwerk
+              </p>
+              <p style={{ fontSize: "14px", color: "#666", marginBottom: "1rem" }}>
+                De kaart laadt nog. Je favorieten zijn beschikbaar.
+              </p>
+              <button
+                onClick={() => setFavoritesOnly(true)}
+                style={{
+                  padding: "0.75rem 1.5rem",
+                  backgroundColor: "#9d3d22",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "4px",
+                  fontSize: "14px",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                }}
+              >
+                Toon favorieten
+              </button>
+            </div>
+          </div>
+        )}
 
         {favoritesOnly ? (
           <>
@@ -653,11 +1009,16 @@ export default function LiveMap({
           <>
             {/* Plaatsen in beeld; de stad die met het middelpunt samenvalt
                 weglaten (anders een dubbel icoon achter de eigen-locatie). */}
-            {nearby
+            {showWeatherIcons && nearby
               .filter(({ city }) => distanceKm(center, city) > 2)
               .map((place) => {
                   const day = step === "now" ? place.days[0] : place.days[step];
-                  const dimmed = filterActive && !passesFilter(day);
+                  const dist = distanceKm(center, place.city);
+                  // Buiten de afstandscirkel: geen weericoon meer (enkel de naam
+                  // blijft, uit de aparte namen-laag hieronder).
+                  if (distLimited && dist > maxDist) return null;
+                  // Binnen de cirkel maar niet aan het weerfilter: grijs puntje.
+                  const dimmed = filterActive && !passesFilter(day, dist, place.days);
                   const icon = iconForPlace(place, step, dimmed, MAP_ICON_SCALE);
                   if (!icon) return null;
                   return (
@@ -735,27 +1096,60 @@ export default function LiveMap({
               : "bg-surface text-primary border-2 border-outline-variant"
           }`}
         >
-          <Icon name="favorite" filled className="text-[24px]" />
+          <Icon name="favorite" filled={false} className="text-[24px]" />
         </button>
       )}
 
-      {/* Filterknop, onder het hartje. */}
+      {/* Filterknop, onder het hartje. Actief filter = invers: rode vulling met
+          witte streepjes, zodat meteen duidelijk is dat er een filter aanstaat. */}
       <button
         onClick={() => setShowFilter((v) => !v)}
         aria-label="Filter"
-        className={`absolute z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
+        className={`absolute z-[1000] w-12 h-12 rounded-full border-2 flex items-center justify-center stamp-shadow active-press ${
           favorites.length > 0 ? "top-[125px]" : "top-[69px]"
         } right-3 ${
           filterActive
-            ? "bg-primary text-on-primary"
-            : "bg-surface text-primary border-2 border-outline-variant"
+            ? "bg-error border-error text-white"
+            : "bg-surface border-outline-variant text-primary"
         }`}
       >
         <Icon name="tune" filled className="text-[24px]" />
       </button>
 
+      {/* Weericonen-knop */}
+      <button
+        onClick={() => setShowWeatherIcons((v) => !v)}
+        aria-label="Weericonen"
+        title="Weericonen tonen/verbergen"
+        className={`absolute z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
+          favorites.length > 0 ? "top-[181px]" : "top-[125px]"
+        } right-3 ${
+          showWeatherIcons
+            ? "bg-primary text-on-primary"
+            : "bg-surface text-primary border-2 border-outline-variant"
+        }`}
+      >
+        <Icon name="wb_sunny" className="text-[24px]" />
+      </button>
+
+      {/* Regenradar-knop — pulseer wanneer regen verwacht wordt */}
+      <button
+        onClick={() => setShowRainOverlay((v) => !v)}
+        aria-label="Regenvoorspelling"
+        title={hasRainExpected ? "Regen verwacht! Klik voor details" : "Regenvoorspelling volgende uur"}
+        className={`absolute z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
+          favorites.length > 0 ? "top-[237px]" : "top-[181px]"
+        } right-3 ${
+          showRainOverlay
+            ? "bg-primary text-on-primary"
+            : "bg-surface text-primary border-2 border-outline-variant"
+        } ${hasRainExpected ? "rain-alert" : ""}`}
+      >
+        <Icon name="raindrops" className="text-[24px]" />
+      </button>
+
       {/* Eigen zoombediening: +/– met het actuele zoomniveau eronder. */}
-      <div className="absolute bottom-6 left-3 z-[1000] flex flex-col items-stretch rounded-lg overflow-hidden border-2 border-outline-variant bg-surface stamp-shadow">
+      <div className="absolute top-[69px] left-3 z-[1000] flex flex-col items-stretch rounded-lg overflow-hidden border-2 border-outline-variant bg-surface stamp-shadow">
         <button
           onClick={() => mapRef.current?.zoomIn()}
           aria-label="Inzoomen"
@@ -786,6 +1180,17 @@ export default function LiveMap({
           setMinSun={setMinSun}
           maxRain={maxRain}
           setMaxRain={setMaxRain}
+          minRain={minRain}
+          setMinRain={setMinRain}
+          minSnow={minSnow}
+          setMinSnow={setMinSnow}
+          maxDist={maxDist}
+          setMaxDist={setMaxDist}
+          range={range}
+          setRange={setRange}
+          minGoodDays={minGoodDays}
+          setMinGoodDays={setMinGoodDays}
+          centerDays={centerDays}
           onClose={() => setShowFilter(false)}
         />
       )}
@@ -797,13 +1202,110 @@ export default function LiveMap({
         </div>
       )}
 
+      {/* Open-Meteo rate-limit (429): verklaar de (deels) lege kaart. */}
+      {rateLimited && !loading && (
+        <div className="absolute bottom-20 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-1.5 max-w-[92%] rounded-xl bg-error-container border border-error/40 px-3 py-1.5 stamp-shadow font-label-sm text-label-sm text-on-error-container">
+          <Icon name="error" filled className="text-base shrink-0" />
+          <span className="leading-snug">
+            Weer tijdelijk niet beschikbaar (te veel aanvragen) — probeer over een
+            paar minuten opnieuw.
+          </span>
+        </div>
+      )}
+
       <Timeline
         days={centerDays}
         step={step}
         onStep={selectStep}
         playing={playing}
         onTogglePlay={() => setPlaying((p) => !p)}
+        onDivergenceClick={setDivergenceDay}
       />
+
+      {/* Regenradar overlay — zweeft net onder de drie ronde knoppen rechts
+          (die zakken mee als er favorieten zijn, dus het startpunt ook). */}
+      {showRainOverlay && (
+        <RainOverlay
+          data={minutelyData}
+          onClose={() => setShowRainOverlay(false)}
+          location={label}
+          topPx={favorites.length > 0 ? 237 : 181}
+        />
+      )}
+
+      {/* Divergence-uitleg modal */}
+      {divergenceDay && (
+        <DivergenceModal
+          day={divergenceDay}
+          onClose={() => setDivergenceDay(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+/** Modal: uitleg wanneer GFS en KNMI modellen divergeren. */
+function DivergenceModal({
+  day,
+  onClose,
+}: {
+  day: DayLite;
+  onClose: () => void;
+}) {
+  const tempDiff = day.knmiTMax !== undefined ? Math.abs(day.tMax - day.knmiTMax) : 0;
+  const rainDiff = day.knmiPrecip !== undefined ? Math.abs(day.precip - day.knmiPrecip) : 0;
+  const sunDiff = day.knmiSunHours !== undefined ? Math.abs(day.sunHours - day.knmiSunHours) : 0;
+
+  return (
+    <div
+      className="fixed inset-0 bg-black/50 z-[2000] flex items-center justify-center p-4 animate-fade-in"
+      onClick={onClose}
+    >
+      <div
+        className="bg-surface rounded-2xl border-2 border-outline-variant max-w-[400px] p-4 stamp-shadow"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 mb-3">
+          <div className="text-[24px]">⚠️</div>
+          <h2 className="font-headline-sm text-[18px] text-on-surface">
+            Modellen divergeren
+          </h2>
+        </div>
+
+        <p className="text-[13px] text-on-surface-variant mb-3">
+          {day.divergenceReason?.includes("temp") && (
+            <div>
+              🌡️ <strong>Temperatuur:</strong> GFS zegt {day.tMax}°C, KNMI zegt{" "}
+              {day.knmiTMax}°C (verschil {tempDiff.toFixed(1)}°C)
+            </div>
+          )}
+          {day.divergenceReason?.includes("rain") && (
+            <div>
+              🌧️ <strong>Regen:</strong> GFS zegt {day.precip.toFixed(1)}mm, KNMI zegt{" "}
+              {day.knmiPrecip?.toFixed(1)}mm (verschil {rainDiff.toFixed(1)}mm)
+            </div>
+          )}
+          {day.divergenceReason?.includes("sun") && (
+            <div>
+              ☀️ <strong>Zon:</strong> GFS zegt {day.sunHours.toFixed(1)}u, KNMI zegt{" "}
+              {day.knmiSunHours?.toFixed(1)}u (verschil {sunDiff.toFixed(1)}u)
+            </div>
+          )}
+        </p>
+
+        <p className="text-[12px] text-on-surface-variant leading-snug mb-3">
+          <strong>Advies:</strong> KNMI HARMONIE is lokaal zeer nauwkeurig voor België. Als beide
+          modellen het erover eens zijn, is het zeer waarschijnlijk. Wanneer ze divergeren, is
+          de werkelijkheid waarschijnlijk ergens in het midden, maar <strong>KNMI is betrouwbaarder voor regio-specifieke voorspellingen</strong>.
+        </p>
+
+        <button
+          onClick={onClose}
+          className="w-full px-3 py-2 rounded-lg bg-primary text-on-primary font-headline-sm text-[13px] uppercase active-press"
+        >
+          Sluit
+        </button>
+      </div>
     </div>
   );
 }
@@ -815,12 +1317,14 @@ function Timeline({
   onStep,
   playing,
   onTogglePlay,
+  onDivergenceClick,
 }: {
   days: DayLite[];
   step: Step;
   onStep: (s: Step) => void;
   playing: boolean;
   onTogglePlay: () => void;
+  onDivergenceClick?: (day: DayLite) => void;
 }) {
   // Actieve chip in beeld houden (mee-scrollen als hij buiten beeld valt).
   const activeRef = useRef<HTMLButtonElement | null>(null);
@@ -911,6 +1415,9 @@ function Timeline({
               innerRef={step === i ? activeRef : undefined}
               label={fmtWeekday(d.date)}
               sub={fmtDayMonth(d.date)}
+              diverges={d.diverges}
+              divergenceReason={d.divergenceReason}
+              onDivergenceClick={() => onDivergenceClick?.(d)}
             />
           ))}
         </div>
@@ -925,28 +1432,49 @@ function Chip({
   stepValue,
   label,
   sub,
+  diverges,
+  divergenceReason,
+  onDivergenceClick,
 }: {
   active: boolean;
   innerRef?: Ref<HTMLButtonElement>;
   stepValue: Step;
   label: string;
   sub: string;
+  diverges?: boolean;
+  divergenceReason?: string;
+  onDivergenceClick?: () => void;
 }) {
   return (
-    <button
-      ref={innerRef}
-      data-step={stepValue}
-      className={`shrink-0 min-w-[38px] px-1 py-1 rounded-md text-center leading-none active-press transition-colors ${
-        active
-          ? "bg-primary text-on-primary"
-          : "bg-surface-container-high text-on-surface-variant"
-      }`}
-    >
-      <div className="font-headline-sm text-[16px] uppercase capitalize">
-        {label}
-      </div>
-      <div className="text-[12px] mt-0.5 h-3.5">{sub}</div>
-    </button>
+    <div className="relative shrink-0">
+      <button
+        ref={innerRef}
+        data-step={stepValue}
+        className={`min-w-[38px] px-1 py-1 rounded-md text-center leading-none active-press transition-colors block w-full ${
+          active
+            ? "bg-primary text-on-primary"
+            : "bg-surface-container-high text-on-surface-variant"
+        }`}
+      >
+        <div className="font-headline-sm text-[16px] uppercase capitalize">
+          {label}
+        </div>
+        <div className="text-[12px] mt-0.5 h-3.5">{sub}</div>
+      </button>
+      {diverges && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onDivergenceClick?.();
+          }}
+          className="absolute -top-1 -right-1 bg-warning text-on-warning rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold cursor-help hover:scale-110 transition-transform"
+          title={`Modellen divergeren: ${divergenceReason}`}
+          aria-label={`Model-divergentie: ${divergenceReason}`}
+        >
+          ⚠
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -960,6 +1488,17 @@ function FilterPanel({
   setMinSun,
   maxRain,
   setMaxRain,
+  minRain,
+  setMinRain,
+  minSnow,
+  setMinSnow,
+  maxDist,
+  setMaxDist,
+  range,
+  setRange,
+  minGoodDays,
+  setMinGoodDays,
+  centerDays,
   onClose,
 }: {
   minTemp: number;
@@ -970,59 +1509,184 @@ function FilterPanel({
   setMinSun: (v: number) => void;
   maxRain: number;
   setMaxRain: (v: number) => void;
+  minRain: number;
+  setMinRain: (v: number) => void;
+  minSnow: number;
+  setMinSnow: (v: number) => void;
+  maxDist: number;
+  setMaxDist: (v: number) => void;
+  range: { from: number; to: number } | null;
+  setRange: (r: { from: number; to: number } | null) => void;
+  minGoodDays: number;
+  setMinGoodDays: (v: number) => void;
+  centerDays: DayLite[];
   onClose: () => void;
 }) {
+  const [showHelp, setShowHelp] = useState(false);
   const reset = () => {
     setMinTemp(0);
     setMaxTemp(40);
     setMinSun(0);
     setMaxRain(15);
+    setMinRain(0);
+    setMinSnow(0);
+    setMaxDist(FILTER_DIST_MAX);
+    setRange(null);
+    setMinGoodDays(1);
+  };
+  // Snelkeuzes: zetten de weer-schuifbalken in één tik zodat de kaart net die
+  // plaatsen toont die het gekozen icoon opleveren (afstand blijft ongemoeid).
+  const preset = (kind: "sun" | "rain" | "snow") => {
+    setMinTemp(0);
+    setMaxTemp(40);
+    setMinSun(0);
+    setMaxRain(15);
+    setMinRain(0);
+    setMinSnow(0);
+    if (kind === "sun") {
+      setMinSun(7); // volle zon of "zon met een kleine wolk"
+      setMaxRain(1); // en droog, zodat het zon-icoon blijft
+    } else if (kind === "rain") {
+      setMinRain(1); // vanaf een natte dag verschijnt het regenicoon
+    } else {
+      setMinSnow(1); // vanaf 1 cm sneeuwval verschijnt het sneeuwicoon
+    }
   };
   return (
     <div className="absolute inset-x-0 bottom-0 z-[1100] bg-surface border-t-2 border-outline-variant rounded-t-2xl stamp-shadow max-h-[80%] overflow-y-auto animate-fade-in">
-      <div className="sticky top-0 z-10 flex items-center justify-between px-3 h-14 bg-surface border-b-2 border-outline-variant">
+      <div className="sticky top-0 z-10 flex items-center gap-1.5 px-3 h-14 bg-surface border-b-2 border-outline-variant">
         <button
           onClick={reset}
-          className="px-3 py-1.5 rounded-lg font-headline-sm text-[16px] uppercase text-primary hover:bg-surface-container-high active-press"
+          className="shrink-0 px-2.5 py-1 rounded-lg bg-primary text-on-primary font-headline-sm text-[13px] uppercase active-press"
         >
           Reset
         </button>
-        <span className="font-headline-md text-headline-md uppercase tracking-wide flex items-center gap-1.5">
-          <Icon name="tune" filled className="text-primary text-[24px]" /> Filter
+        {/* Presets: zon / regen / sneeuw — het weericoon zelf als knop. */}
+        <span className="shrink-0 ml-3 font-headline-sm text-[16px] font-bold uppercase tracking-wide text-on-surface">
+          Presets
         </span>
+        <div className="flex items-center gap-1 ml-2">
+          <PresetButton glyph="sky_0" label="Zon" onClick={() => preset("sun")} />
+          <PresetButton glyph="rain_2" label="Regen" onClick={() => preset("rain")} />
+          <PresetButton glyph="snow_2" label="Sneeuw" onClick={() => preset("snow")} />
+        </div>
         <button
           onClick={onClose}
-          className="px-5 py-1.5 rounded-lg bg-primary text-on-primary font-headline-sm text-[16px] uppercase active-press"
+          className="ml-auto shrink-0 px-3 py-1 rounded-lg bg-primary text-on-primary font-headline-sm text-[13px] uppercase active-press"
         >
           OK
         </button>
       </div>
 
-      <div className="pb-4">
-        <GroupLabel>Temperatuur</GroupLabel>
+      <div className="pt-2 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+        {/* Algemene uitleg over het filter, verborgen achter een kleine (i). */}
+        <button
+          type="button"
+          onClick={() => setShowHelp((v) => !v)}
+          aria-label="Uitleg over het filter"
+          className={`flex items-center gap-1.5 px-4 pb-1 active-press ${
+            showHelp ? "text-primary" : "text-outline hover:text-primary"
+          }`}
+        >
+          <Icon name="info" filled={showHelp} className="text-[22px] shrink-0" />
+          <span className="font-headline-sm text-[13px] uppercase tracking-wide">
+            Wat doet dit filter?
+          </span>
+        </button>
+        {showHelp && (
+          <p className="px-4 pb-2 text-[13px] leading-snug text-on-surface-variant">
+            Toon alleen plaatsen die passen bij het weer dat jij zoekt: kies een
+            straal (afstand), een min.- en max.-temperatuur, minimum zonuren, en
+            een minimum of maximum aan regen en sneeuw. Met de{" "}
+            <strong>presets</strong> (zon, regen, sneeuw) zet je alles in één tik
+            goed; Reset wist je keuzes. Plaatsen die niet aan je filter voldoen,
+            vervagen (grijs bolletje).
+          </p>
+        )}
+
         <FilterRow
-          title="Minimum"
-          info="De laagste maximumtemperatuur van de dag. Plaatsen waar het overdag kouder blijft dan dit, vervagen."
-          display={`${minTemp}°`}
-          value={minTemp}
-          min={0}
-          max={40}
-          step={1}
-          onChange={setMinTemp}
-        />
-        <FilterRow
-          title="Maximum"
-          info="De hoogste maximumtemperatuur van de dag. Plaatsen waar het overdag warmer wordt dan dit, vervagen."
-          display={maxTemp >= 40 ? "40°+" : `${maxTemp}°`}
-          value={maxTemp}
-          min={0}
-          max={40}
-          step={1}
-          onChange={setMaxTemp}
+          icon="straighten"
+          title="Afstand"
+          info="Toon enkel plaatsen binnen deze straal vanaf de gezochte plaats. Er wordt een cirkel op de kaart getekend."
+          display={maxDist >= FILTER_DIST_MAX ? "onbeperkt" : `${maxDist} km`}
+          value={maxDist}
+          min={FILTER_DIST_MIN}
+          max={FILTER_DIST_MAX}
+          step={10}
+          steps={DIST_STEPS}
+          onChange={setMaxDist}
         />
 
-        <GroupLabel>Zon</GroupLabel>
+        {/* Periode kiezen: snelknoppen + bereik */}
+        <div className="px-4 py-3 border-b border-outline-variant">
+          <div className="font-headline-sm text-[13px] uppercase tracking-wide text-on-surface mb-2">
+            Periode
+          </div>
+          <div className="flex gap-1.5 flex-wrap">
+            <button
+              onClick={() => {
+                const w = thisWeekend(centerDays);
+                if (w) setRange(w);
+              }}
+              disabled={!thisWeekend(centerDays)}
+              className="px-2.5 py-1 rounded-lg text-[12px] font-headline-sm bg-surface-container-high text-on-surface-variant disabled:opacity-30 active-press"
+            >
+              Dit weekend
+            </button>
+            <button
+              onClick={() => {
+                const w = nextWeek(centerDays);
+                if (w) setRange(w);
+              }}
+              disabled={!nextWeek(centerDays)}
+              className="px-2.5 py-1 rounded-lg text-[12px] font-headline-sm bg-surface-container-high text-on-surface-variant disabled:opacity-30 active-press"
+            >
+              Volgende week
+            </button>
+            <button
+              onClick={() => setRange(null)}
+              className={`px-2.5 py-1 rounded-lg text-[12px] font-headline-sm active-press ${
+                range === null
+                  ? "bg-primary text-on-primary"
+                  : "bg-surface-container-high text-on-surface-variant"
+              }`}
+            >
+              Kies dagen
+            </button>
+          </div>
+          {range && (
+            <div className="mt-2 text-[11px] text-on-surface-variant">
+              {centerDays[range.from]
+                ? `${fmtWeekday(centerDays[range.from].date)} tot ${fmtWeekday(centerDays[range.to].date)}`
+                : ""}
+            </div>
+          )}
+        </div>
+
+        {/* Minstens X goede dagen in de periode */}
+        {range && (
+          <FilterRow
+            icon="calendar_today"
+            title="Minstens X goede dagen"
+            info={`Toon plaatsen met minstens deze hoeveelheid goede dagen in je periode.`}
+            display={`${minGoodDays}`}
+            value={minGoodDays}
+            min={1}
+            max={Math.max(1, range.to - range.from + 1)}
+            step={1}
+            onChange={setMinGoodDays}
+          />
+        )}
+
+        <TempPair
+          minTemp={minTemp}
+          setMinTemp={setMinTemp}
+          maxTemp={maxTemp}
+          setMaxTemp={setMaxTemp}
+        />
+
         <FilterRow
+          icon="sky_0"
           title="Min. zonuren"
           info="Aantal uren zon per dag. Vanaf 8 zonuren heb je een goeie dag."
           display={`${minSun} u`}
@@ -1033,8 +1697,8 @@ function FilterPanel({
           onChange={setMinSun}
         />
 
-        <GroupLabel>Regen</GroupLabel>
         <FilterRow
+          icon="rain_2"
           title="Max. regen"
           info="Totale regen over de hele dag. 0 mm = droog · 1–2 mm = een spatje · 5 mm+ = echt nat. Plaatsen met méér regen vervagen."
           display={maxRain >= 15 ? "alles" : `${maxRain} mm`}
@@ -1044,20 +1708,60 @@ function FilterPanel({
           step={1}
           onChange={setMaxRain}
         />
+        <FilterRow
+          icon="rain_2"
+          title="Min. regen"
+          info="Zoek juist naar regen: plaatsen met mínder regen dan dit vervagen. 1 mm+ = een natte dag."
+          display={`${minRain} mm`}
+          value={minRain}
+          min={0}
+          max={15}
+          step={1}
+          onChange={setMinRain}
+        />
+
+        <FilterRow
+          icon="snow_2"
+          title="Min. sneeuw"
+          info="Zoek naar sneeuw: plaatsen met mínder sneeuwval dan dit vervagen. 1 cm+ = een besneeuwde dag."
+          display={`${minSnow} cm`}
+          value={minSnow}
+          min={0}
+          max={20}
+          step={1}
+          onChange={setMinSnow}
+        />
       </div>
     </div>
   );
 }
 
-function GroupLabel({ children }: { children: string }) {
+/** Preset-knop in de filter-header: het weericoon zelf als ronde knop. */
+function PresetButton({
+  glyph,
+  label,
+  onClick,
+}: {
+  glyph: string;
+  label: string;
+  onClick: () => void;
+}) {
   return (
-    <div className="px-4 pt-3 pb-1 font-headline-sm text-[15px] uppercase tracking-widest text-outline">
-      {children}
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`Preset: ${label}`}
+      title={label}
+      className="w-12 h-12 shrink-0 rounded-full border-2 border-outline-variant bg-surface flex items-center justify-center hover:bg-surface-container-high active-press"
+    >
+      <Icon name={glyph} className="text-[30px]" />
+    </button>
   );
 }
 
+
 function FilterRow({
+  icon,
   title,
   info,
   display,
@@ -1065,25 +1769,37 @@ function FilterRow({
   min,
   max,
   step,
+  steps,
   onChange,
 }: {
-  title: string;
+  icon: string; // voor-icoon dat de groep aanduidt (i.p.v. een tekst-titel)
+  title?: string; // optioneel kort label (bv. "Min"/"Max") waar dat verschil telt
   info: string;
   display: string;
   value: number;
   min: number;
   max: number;
   step: number;
+  steps?: number[]; // niet-lineaire waarden; schuifbalk loopt dan over de index
   onChange: (v: number) => void;
 }) {
   const [showInfo, setShowInfo] = useState(false);
+  // Met `steps` schuift de balk over de index (gelijke stapjes op het scherm),
+  // maar springt de waarde in steeds grotere sprongen.
+  const stepped = !!steps && steps.length > 0;
+  const idx = stepped ? Math.max(0, steps!.indexOf(value)) : value;
   return (
-    <div className="px-4 py-2">
+    <div className="px-4 py-0.5">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <span className="font-headline-sm text-[19px] uppercase truncate">
-            {title}
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="shrink-0 w-[26px] flex justify-center">
+            <Icon name={icon} className="text-[26px] text-on-surface-variant" />
           </span>
+          {title && (
+            <span className="font-headline-sm text-[18px] uppercase truncate">
+              {title}
+            </span>
+          )}
           <button
             type="button"
             onClick={() => setShowInfo((v) => !v)}
@@ -1104,15 +1820,136 @@ function FilterRow({
           {info}
         </p>
       )}
-      <input
-        type="range"
-        min={min}
-        max={max}
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="mt-1.5"
-      />
+      {/* Slider springt even ver in als het icoon-slot (26px) + tussenruimte
+          (gap-2 = 8px), zodat het startbolletje op één lijn staat met MIN. TEMP.
+          Rechts wat marge zodat de max-knop niet tegen de schermrand plakt. */}
+      <div className="pl-[34px] pr-3">
+        <input
+          type="range"
+          min={stepped ? 0 : min}
+          max={stepped ? steps!.length - 1 : max}
+          step={stepped ? 1 : step}
+          value={idx}
+          onChange={(e) =>
+            onChange(stepped ? steps![Number(e.target.value)] : Number(e.target.value))
+          }
+          className="mt-0.5 w-full"
+        />
+      </div>
+    </div>
+  );
+}
+
+/** Temperatuur min + max naast elkaar op één rij, met een (i)-uitleg per kant.
+ *  Er is maar één uitlegtekst tegelijk open; die verschijnt onder de twee. */
+function TempPair({
+  minTemp,
+  setMinTemp,
+  maxTemp,
+  setMaxTemp,
+}: {
+  minTemp: number;
+  setMinTemp: (v: number) => void;
+  maxTemp: number;
+  setMaxTemp: (v: number) => void;
+}) {
+  const [info, setInfo] = useState<null | "min" | "max">(null);
+  const toggle = (k: "min" | "max") =>
+    setInfo((cur) => (cur === k ? null : k));
+  return (
+    <div className="px-4 py-0.5">
+      <div className="flex items-center gap-2">
+        <span className="shrink-0 w-[26px] flex justify-center">
+          <Icon
+            name="device_thermostat"
+            className="text-[26px] text-on-surface-variant"
+          />
+        </span>
+        <div className="flex flex-1 gap-4 min-w-0">
+          <TempCol
+            label="Min. temp"
+            display={`${minTemp}°`}
+            value={minTemp}
+            onChange={setMinTemp}
+            infoOpen={info === "min"}
+            onInfo={() => toggle("min")}
+          />
+          <TempCol
+            label="Max. temp"
+            display={maxTemp >= 40 ? "40°+" : `${maxTemp}°`}
+            value={maxTemp}
+            onChange={setMaxTemp}
+            infoOpen={info === "max"}
+            onInfo={() => toggle("max")}
+          />
+        </div>
+      </div>
+      {info === "min" && (
+        <p className="text-[14px] leading-snug text-on-surface-variant mt-1">
+          De laagste maximumtemperatuur van de dag. Plaatsen waar het overdag
+          kouder blijft dan dit, vervagen.
+        </p>
+      )}
+      {info === "max" && (
+        <p className="text-[14px] leading-snug text-on-surface-variant mt-1">
+          De hoogste maximumtemperatuur van de dag. Plaatsen waar het overdag
+          warmer wordt dan dit, vervagen.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Eén kolom van het temperatuur-paar: label + (i) + waarde, met de slider. */
+function TempCol({
+  label,
+  display,
+  value,
+  onChange,
+  infoOpen,
+  onInfo,
+}: {
+  label: string;
+  display: string;
+  value: number;
+  onChange: (v: number) => void;
+  infoOpen: boolean;
+  onInfo: () => void;
+}) {
+  return (
+    <div className="flex-1 min-w-0">
+      <div className="flex items-center justify-between gap-1">
+        <div className="flex items-center gap-0.5 min-w-0">
+          <span className="font-headline-sm text-[15px] uppercase truncate">
+            {label}
+          </span>
+          <button
+            type="button"
+            onClick={onInfo}
+            aria-label="Uitleg"
+            className={`shrink-0 active-press ${
+              infoOpen ? "text-primary" : "text-outline hover:text-primary"
+            }`}
+          >
+            <Icon name="info" filled={infoOpen} className="text-[17px]" />
+          </button>
+        </div>
+        <span className="font-headline-sm text-[18px] text-primary shrink-0">
+          {display}
+        </span>
+      </div>
+      {/* pr-2: max-knop niet tegen de kolom-/schermrand. */}
+      <div className="pr-2">
+        <input
+          type="range"
+          min={0}
+          max={40}
+          step={1}
+          value={value}
+          onChange={(e) => onChange(Number(e.target.value))}
+          className="mt-0.5 w-full"
+        />
+      </div>
     </div>
   );
 }

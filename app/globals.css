@@ -102,6 +102,17 @@
 }
 
 /* ── Basis ─────────────────────────────────────────────────────────────── */
+/* De app vult exact het zichtbare venster (root = h-dvh). We blokkeren het
+   scrollen/rubber-banden van het document zelf, zodat op iOS de titelbalk niet
+   wegschuift wanneer je boven de kaart sleept. Interne scroll-zones (daglijst,
+   filter…) behouden hun eigen overflow. */
+html,
+body {
+  height: 100%;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
+
 body {
   background-color: #fff9ee; /* Oatmeal */
   background-image:
@@ -109,7 +120,6 @@ body {
     linear-gradient(rgba(138, 114, 107, 0.05) 1px, transparent 1px),
     linear-gradient(90deg, rgba(138, 114, 107, 0.05) 1px, transparent 1px);
   background-size: 20px 20px, 40px 40px, 40px 40px;
-  min-height: 100vh;
   font-family: var(--font-body-md);
   color: var(--color-on-surface);
 }
@@ -302,6 +312,19 @@ input[type="range"]::-moz-range-thumb {
   animation: fade-in 0.35s ease-out both;
 }
 
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
 .animate-stamp-in {
   animation: stamp-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
@@ -386,7 +409,23 @@ input[type="range"]::-moz-range-thumb {
   .animate-pulse-glow,
   .animate-compass-in,
   .animate-wiggle,
-  .animate-float {
+  .animate-float,
+  .animate-slide-up {
     animation: none;
+  }
+}
+
+/* ── Staand vergrendelen ───────────────────────────────────────────────── */
+/* Op de telefoon (grove aanwijzer + lage hoogte in liggende stand) tonen we
+   een melding i.p.v. de app; iOS Safari laat een echte orientation-lock voor
+   webpagina's niet toe. De manifest (portrait-primary) vergrendelt wél de
+   geïnstalleerde app. */
+.orientation-lock {
+  display: none;
+}
+
+@media (orientation: landscape) and (max-height: 520px) and (pointer: coarse) {
+  .orientation-lock {
+    display: flex;
   }
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type Ref } from "react";
 import { Icon } from "./Icon";
+import { RainButton } from "./RainButton";
 import {
   conditionFromHourDayNight,
   fetchHourly,
@@ -21,14 +22,12 @@ export function HourDetail({
   date,
   isFavorite,
   onToggleFavorite,
-  onOpenLegend,
   onClose,
 }: {
   place: { name: string; lat: number; lon: number };
   date: string;
   isFavorite: boolean;
   onToggleFavorite: () => void;
-  onOpenLegend: () => void;
   onClose: () => void;
 }) {
   const [hours, setHours] = useState<HourForecast[] | null>(null);
@@ -92,13 +91,7 @@ export function HourDetail({
             }`}
           />
         </button>
-        <button
-          onClick={onOpenLegend}
-          aria-label="Uitleg weericonen"
-          className="w-10 h-10 -mr-1 shrink-0 rounded-full flex items-center justify-center hover:bg-surface-container-high active-press"
-        >
-          <Icon name="info" className="text-[24px] text-primary" />
-        </button>
+        <RainButton place={place} />
       </div>
 
       {/* Uren */}

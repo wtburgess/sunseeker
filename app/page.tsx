@@ -5,8 +5,14 @@ import { useCallback, useEffect, useState } from "react";
 import { TopAppBar } from "./components/TopAppBar";
 import { LocationBar } from "./components/LocationBar";
 import { CityDetail } from "./components/CityDetail";
+import { WeatherStory } from "./components/WeatherStory";
 import { Legend } from "./components/Legend";
-import { geocode, reverseGeocode, type GeocodeResult } from "./lib/geo";
+import {
+  geocode,
+  reverseGeocode,
+  fetchIpLocation,
+  type GeocodeResult,
+} from "./lib/geo";
 import {
   loadFavorites,
   toggleFavorite,
@@ -19,6 +25,16 @@ export type Coords = { lat: number; lon: number };
 
 // Terugvallocatie als het toestel geen geolocatie geeft (Brussel).
 const FALLBACK: Coords = { lat: 50.8503, lon: 4.3517 };
+
+// Onthoudt wanneer de installatiebanner weer getoond mag worden (na "Niet nu").
+const INSTALL_SNOOZE_KEY = "install-snooze-until";
+const isInstallSnoozed = () =>
+  Date.now() < Number(localStorage.getItem(INSTALL_SNOOZE_KEY) || 0);
+const snoozeInstall = (days: number) =>
+  localStorage.setItem(
+    INSTALL_SNOOZE_KEY,
+    String(Date.now() + days * 86_400_000),
+  );
 
 // Leaflet heeft `window` nodig → enkel client-side renderen.
 const LiveMap = dynamic(() => import("./components/LiveMap"), {
@@ -38,6 +54,9 @@ export default function Home() {
   const [placeName, setPlaceName] = useState("");
   const [favorites, setFavorites] = useState<Favorite[]>([]);
   const [locating, setLocating] = useState(false);
+  // Telt op bij elke locatiebepaling (opstart, GPS-knop, IP-terugval). De kaart
+  // speelt bij elke nieuwe waarde de inzoom-intro op de locatie af.
+  const [locateNonce, setLocateNonce] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   // Aangeklikte plaats → dag-detailoverzicht (over de zoekbalk + kaart).
   const [selected, setSelected] = useState<{
@@ -46,15 +65,55 @@ export default function Home() {
     lon: number;
   } | null>(null);
   const [showLegend, setShowLegend] = useState(false);
+  // Plaats waarvoor het weerpraatje open staat (bovenbalk of detailscherm).
+  const [storyPlace, setStoryPlace] = useState<{
+    name: string;
+    lat: number;
+    lon: number;
+  } | null>(null);
+  // Werkelijke locatie van het toestel (GPS of IP-benadering) — apart van de
+  // gezochte/gecentreerde plaats, want de afstand in het dagdetail moet altijd
+  // vanaf het toestel gerekend worden, niet vanaf wat in het zoekveld staat.
+  const [deviceLoc, setDeviceLoc] = useState<{
+    name: string;
+    lat: number;
+    lon: number;
+  } | null>(null);
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [showInstall, setShowInstall] = useState(false);
+  const [showIOSHint, setShowIOSHint] = useState(false);
+  // Chrome-op-iOS (CriOS) heeft de deelknop onder het drie-puntjes-menu;
+  // Safari heeft het deel-icoon los in de balk. De instructie verschilt dus.
+  const [iosIsChrome, setIosIsChrome] = useState(false);
+
+  // Terugval als de toestellocatie (GPS) niet beschikbaar is: benaderende
+  // locatie via het IP-adres (geen toestemming nodig). Lukt ook dat niet, dan
+  // Brussel als laatste redmiddel.
+  const fallbackToIp = useCallback(async () => {
+    const ip = await fetchIpLocation();
+    if (ip) {
+      setCoords({ lat: ip.lat, lon: ip.lon });
+      setQuery(ip.name);
+      setPlaceName(ip.name);
+      setDeviceLoc({ name: ip.name, lat: ip.lat, lon: ip.lon });
+      setNotice("Locatie bij benadering - zet je GPS-locatie aan voor meer precisie");
+    } else {
+      setCoords((c) => c ?? FALLBACK);
+      setQuery((q) => q || "Brussel");
+      setPlaceName((p) => p || "Brussel");
+      setDeviceLoc((d) => d ?? { name: "Brussel", lat: FALLBACK.lat, lon: FALLBACK.lon });
+      setNotice("Geen locatie beschikbaar — typ een plaats of gebruik Brussel");
+    }
+    setLocateNonce((n) => n + 1); // intro afspelen op de (benaderde) locatie
+    setLocating(false);
+  }, []);
 
   // Locatie van pc/smartphone inlezen: kaart centreren én de plaatsnaam in het
   // invulveld tonen (net alsof je hem had ingetypt en op Enter gedrukt).
   const useDeviceLocation = useCallback(() => {
     if (!navigator.geolocation) {
-      setCoords((c) => c ?? FALLBACK);
-      setQuery("Brussel");
-      setPlaceName("Brussel");
-      setNotice("Geen toestellocatie beschikbaar — Brussel getoond");
+      setLocating(true);
+      void fallbackToIp();
       return;
     }
     setLocating(true);
@@ -62,24 +121,24 @@ export default function Home() {
       async (pos) => {
         const here = { lat: pos.coords.latitude, lon: pos.coords.longitude };
         setCoords(here);
+        setDeviceLoc({ name: "Mijn locatie", lat: here.lat, lon: here.lon });
+        setLocateNonce((n) => n + 1); // intro afspelen op de GPS-locatie
         setNotice(null);
         setLocating(false);
         const name = await reverseGeocode(here.lat, here.lon).catch(() => null);
         if (name) {
           setQuery(name);
           setPlaceName(name);
+          setDeviceLoc({ name, lat: here.lat, lon: here.lon });
         }
       },
       () => {
-        setCoords((c) => c ?? FALLBACK);
-        setQuery((q) => q || "Brussel");
-        setPlaceName((p) => p || "Brussel");
-        setNotice("Geen toegang tot je locatie — typ een plaats of gebruik Brussel");
-        setLocating(false);
+        // GPS geweigerd of niet beschikbaar → benaderen via IP.
+        void fallbackToIp();
       },
       { enableHighAccuracy: true, timeout: 10_000 },
     );
-  }, []);
+  }, [fallbackToIp]);
 
   // Een aangetikt voorstel: coördinaten zijn al bekend, dus meteen de kaart
   // verplaatsen zonder een tweede zoekopdracht.
@@ -141,12 +200,92 @@ export default function Home() {
     useDeviceLocation();
   }, [useDeviceLocation]);
 
+  // Android: beforeinstallprompt afvangen. De banner niet meteen tonen (dat
+  // voelt rommelig): even wachten tot de gebruiker de kaart heeft gezien, en
+  // niet opnieuw zeuren als hij net "Niet nu" koos of de app al installeerde.
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const onPrompt = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+      const standalone = window.matchMedia("(display-mode: standalone)").matches;
+      if (!standalone && !isInstallSnoozed()) {
+        timer = setTimeout(() => setShowInstall(true), 2500);
+      }
+    };
+    const onInstalled = () => {
+      setShowInstall(false);
+      setInstallPrompt(null);
+      snoozeInstall(3650); // geïnstalleerd → niet meer tonen
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  // iOS: hint tonen zolang app niet op home screen staat.
+  useEffect(() => {
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    // App staat op home screen als standalone mode actief is (navigator.standalone)
+    // of als display-mode: standalone (moderne browsers)
+    const isStandalone =
+      (navigator as any).standalone === true ||
+      window.matchMedia("(display-mode: standalone)").matches;
+    // Hint tonen als iOS EN niet standalone
+    if (isIOS && !isStandalone) {
+      // CriOS = Chrome op iOS, FxiOS = Firefox, EdgiOS = Edge — allemaal met
+      // de deelknop onder een drie-puntjes-menu i.p.v. los in de balk.
+      setIosIsChrome(/CriOS|FxiOS|EdgiOS/.test(navigator.userAgent));
+      setShowIOSHint(true);
+    }
+  }, []);
+
+  const handleInstallAndroid = async () => {
+    if (!installPrompt) return;
+    setShowInstall(false); // eigen banner weg; Chrome toont nu z'n eigen dialoog
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    setInstallPrompt(null);
+    if (outcome !== "accepted") snoozeInstall(7); // afgewezen → een week rust
+  };
+
+  const dismissInstall = () => {
+    setShowInstall(false);
+    snoozeInstall(7); // "Niet nu" → een week niet opnieuw tonen
+  };
+
   return (
     <div className="h-dvh w-full flex items-center justify-center md:p-6">
+      {/* Liggende stand op de telefoon: melding om rechtop te draaien. Zichtbaar
+          gemaakt via CSS (.orientation-lock) enkel op smalle touch-schermen. */}
+      <div className="orientation-lock fixed inset-0 z-[3000] flex-col items-center justify-center gap-4 bg-surface text-center px-10">
+        <span className="material-symbols-outlined text-primary text-[56px] animate-wiggle">
+          screen_rotation
+        </span>
+        <p className="font-headline-md text-headline-md uppercase tracking-wide text-primary">
+          Draai je toestel rechtop, a.u.b.
+        </p>
+        <p className="text-on-surface-variant text-body-md max-w-xs">
+          Sunseeker werkt het best staand.
+        </p>
+      </div>
       {/* Smartphone-kader: op desktop een beperkt telefoon-venster i.p.v.
           schermvullend; op mobiel gewoon het volledige scherm. */}
       <div className="relative flex flex-col w-full h-full bg-surface overflow-hidden md:w-[400px] md:h-[min(820px,calc(100dvh_-_3rem))] md:rounded-[2rem] md:border-2 md:border-outline-variant md:shadow-2xl">
-        <TopAppBar onInfo={() => setShowLegend(true)} />
+        <TopAppBar
+          onInfo={() => setShowLegend(true)}
+          // Weerpraatje volgt de context: in een detailscherm dat van de
+          // bekeken plaats, anders dat van de plaats uit de zoekbalk.
+          onStory={
+            selected || currentPlace
+              ? () => setStoryPlace(selected ?? currentPlace)
+              : undefined
+          }
+        />
         {/* Alles onder de titel; het detailoverzicht overdekt straks ook de
             zoekbalk (start net onder de hoofdtitel). */}
         <div className="relative flex-grow min-h-0 flex flex-col">
@@ -169,6 +308,7 @@ export default function Home() {
             {coords ? (
               <LiveMap
                 center={coords}
+                locateNonce={locateNonce}
                 label={placeName || query}
                 favorites={favorites}
                 onSelect={setSelected}
@@ -187,14 +327,94 @@ export default function Home() {
           {selected && (
             <CityDetail
               place={selected}
+              reference={deviceLoc}
               isFavorite={isFavorite(favorites, selected)}
               onToggleFavorite={() => toggleFavoritePlace(selected)}
-              onOpenLegend={() => setShowLegend(true)}
               onClose={() => setSelected(null)}
             />
           )}
         </div>
+        {storyPlace && (
+          <WeatherStory
+            place={storyPlace}
+            onClose={() => setStoryPlace(null)}
+          />
+        )}
         {showLegend && <Legend onClose={() => setShowLegend(false)} />}
+
+        {/* Android: install-prompt (verschijnt met vertraging, met backdrop) */}
+        {showInstall && installPrompt && (
+          <div
+            className="fixed inset-0 z-[2000] flex items-end bg-black/40 animate-fade-in"
+            onClick={dismissInstall}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full bg-surface-container-high border-t-2 border-outline-variant p-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] shadow-2xl rounded-t-3xl animate-slide-up"
+            >
+              <div className="mx-auto -mt-1 mb-4 h-1 w-10 rounded-full bg-outline-variant" />
+              <div className="flex items-center gap-3.5 mb-5">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src="/icon-192.png"
+                  alt="Sunseeker"
+                  className="w-14 h-14 rounded-2xl shadow-md flex-shrink-0"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="font-headline-sm text-[18px] uppercase tracking-wide text-on-surface leading-tight">
+                    Sunseeker installeren
+                  </p>
+                  <p className="text-on-surface-variant text-label-md mt-0.5 leading-snug">
+                    Op je startscherm, opent als een echte app — geen app store
+                    nodig.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={dismissInstall}
+                  className="flex-1 px-4 py-3 rounded-xl border-2 border-outline-variant text-on-surface font-label-lg active-press"
+                >
+                  Niet nu
+                </button>
+                <button
+                  onClick={handleInstallAndroid}
+                  className="flex-1 px-4 py-3 rounded-xl bg-primary text-on-primary font-label-lg active-press"
+                >
+                  Installeren
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* iOS: hint voor handmatig toevoegen — native iOS-alert stijl */}
+        {showIOSHint && (
+          <div className="fixed inset-0 z-[2000] flex items-center justify-center px-8 bg-black/40">
+            <div className="w-[270px] max-w-full overflow-hidden rounded-[14px] bg-[#f7f7f7]/95 backdrop-blur-xl shadow-2xl text-center">
+              <div className="px-4 pt-5 pb-4">
+                <h2 className="text-[17px] font-semibold leading-tight text-black">
+                  Maak een app van SUNSEEKER
+                </h2>
+                <p className="mt-2 text-[13px] leading-snug text-black/80">
+                  {iosIsChrome ? (
+                    <>Druk nu op de drie puntjes, kies “Deel”</>
+                  ) : (
+                    <>Druk nu onderaan op het deel-icoon (drie puntjes)</>
+                  )}
+                  , scroll naar beneden en selecteer:{" "}
+                  <strong>Zet op beginscherm</strong> en voeg toe.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowIOSHint(false)}
+                className="block w-full border-t border-black/10 py-2.5 text-[17px] font-semibold text-[#007aff] active:bg-black/5"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
