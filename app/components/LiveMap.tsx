@@ -1421,7 +1421,7 @@ function FilterPanel({
     }
   };
   return (
-    <div className="absolute inset-x-0 bottom-0 z-[1100] bg-surface border-t-2 border-outline-variant rounded-t-2xl stamp-shadow max-h-[80%] overflow-y-auto animate-fade-in">
+    <div className="absolute inset-x-0 top-[69px] z-[1100] bg-surface border-b-2 border-outline-variant rounded-b-2xl stamp-shadow max-h-[calc(100%-69px)] overflow-y-auto animate-fade-in">
       <div className="sticky top-0 z-10 flex items-center gap-1.5 px-3 h-14 bg-surface border-b-2 border-outline-variant">
         <button
           onClick={reset}
