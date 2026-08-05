@@ -1472,10 +1472,9 @@ function FilterPanel({
           </p>
         )}
 
-        {/* Periode kiezen: één icoontje per voorspelde dag. Eerste tik kiest de
+        {/* Periode kiezen: één knopje per voorspelde dag. Eerste tik kiest de
             begindag, tweede tik de einddag; opnieuw op dezelfde dag wist de
-            keuze. Het weericoon staat erin zodat je de periode kunt kiezen op
-            wat je ziet aankomen. */}
+            keuze. */}
         <div className="px-4 py-3 border-b border-outline-variant">
           <div className="font-headline-sm text-[13px] uppercase tracking-wide text-on-surface mb-2 flex items-center justify-between gap-2">
             <span>Periode</span>
@@ -1489,7 +1488,6 @@ function FilterPanel({
           </div>
           <div className="grid grid-cols-7 gap-1">
             {centerDays.slice(0, TIMELINE_DAYS).map((d, i) => {
-              const cond = conditionFromDay(d);
               const inRange =
                 range !== null && i >= range.from && i <= range.to;
               return (
@@ -1510,23 +1508,16 @@ function FilterPanel({
                   }}
                   aria-pressed={inRange}
                   aria-label={`${fmtWeekday(d.date)} ${fmtDayMonth(d.date)}`}
-                  className={`flex flex-col items-center gap-0.5 rounded-lg py-1 active-press ${
+                  className={`flex flex-col items-center gap-0.5 rounded-lg py-1.5 active-press ${
                     inRange
                       ? "bg-primary text-on-primary"
                       : "bg-surface-container-high text-on-surface-variant"
                   }`}
                 >
-                  <span className="text-[10px] leading-none capitalize">
+                  <span className="font-headline-sm text-[14px] leading-none capitalize">
                     {fmtWeekday(d.date)}
                   </span>
-                  <Icon
-                    name={cond.icon}
-                    filled={cond.filled}
-                    className={`text-[20px] leading-none ${
-                      inRange ? "text-on-primary" : cond.iconColor
-                    }`}
-                  />
-                  <span className="text-[9px] leading-none opacity-70">
+                  <span className="text-[11px] leading-none opacity-70">
                     {fmtDayMonth(d.date)}
                   </span>
                 </button>
