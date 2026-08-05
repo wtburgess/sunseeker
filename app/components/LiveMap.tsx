@@ -1454,17 +1454,21 @@ function FilterPanel({
           type="button"
           onClick={() => setShowHelp((v) => !v)}
           aria-label="Uitleg over het filter"
-          className={`flex items-center gap-1.5 px-4 pb-1 active-press ${
+          className={`flex items-center gap-2 px-4 pb-1 active-press ${
             showHelp ? "text-primary" : "text-outline hover:text-primary"
           }`}
         >
-          <Icon name="info" filled={showHelp} className="text-[22px] shrink-0" />
-          <span className="font-headline-sm text-[13px] uppercase tracking-wide">
+          {/* Zelfde icoonkolom als de FilterRows hieronder, zodat alle iconen
+              en labels in het paneel op één lijn staan. */}
+          <span className="shrink-0 w-[26px] flex justify-center">
+            <Icon name="info" filled={showHelp} className="text-[26px]" />
+          </span>
+          <span className="font-headline-sm text-[15px] uppercase tracking-wide">
             Wat doet dit filter?
           </span>
         </button>
         {showHelp && (
-          <p className="px-4 pb-2 text-[13px] leading-snug text-on-surface-variant">
+          <p className="pl-[50px] pr-4 pb-2 text-[13px] leading-snug text-on-surface-variant">
             Toon alleen plaatsen die passen bij het weer dat jij zoekt: kies een
             straal (afstand), een min.- en max.-temperatuur, minimum zonuren, en
             een minimum of maximum aan regen en sneeuw. Met de{" "}
@@ -1480,7 +1484,7 @@ function FilterPanel({
         <div className="px-4 py-3 border-b border-outline-variant">
           <div className="font-headline-sm text-[13px] uppercase tracking-wide text-on-surface mb-2 flex items-center justify-between gap-2">
             <span>Periode</span>
-            <span className="text-[11px] normal-case tracking-normal font-normal text-on-surface-variant">
+            <span className="text-[14px] normal-case tracking-normal font-normal text-on-surface-variant">
               {range && centerDays[range.from] && centerDays[range.to]
                 ? range.from === range.to
                   ? `${fmtWeekday(centerDays[range.from].date)} ${fmtDayMonth(centerDays[range.from].date)} — kies de einddag`
