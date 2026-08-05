@@ -769,16 +769,18 @@ export default function LiveMap({
   };
 
   const passesFilter = (d: DayLite | undefined, distKm = 0, days?: DayLite[]) => {
-    if (!passesWeather(d) || (distLimited && distKm > maxDist)) return false;
-    // In periode-modus: plaats moet genoeg goede dagen hebben.
+    if (distLimited && distKm > maxDist) return false;
+    // Is er een periode gekozen, dan beslist díé periode — niet de dag die de
+    // tijdlijn toevallig toont. Anders zou een plaats aan allebei moeten
+    // voldoen en verdween ze om een dag die je niet eens gekozen had.
     if (rangeLimited && days) return countGoodDays(days) >= minGoodDays;
-    return true;
+    return passesWeather(d);
   };
 
   // De eigen locatie volgt óók het filter, maar wordt niet grijs — enkel
   // doorgestreept als hij niet voldoet.
   const ownDay = step === "now" ? centerDays[0] : centerDays[step];
-  const ownStruck = filterActive && !passesFilter(ownDay);
+  const ownStruck = filterActive && !passesFilter(ownDay, 0, centerDays);
 
   const cond = cur ? conditionFromCurrent(cur) : null;
   const ownIcon =

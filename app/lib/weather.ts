@@ -437,11 +437,14 @@ export function conditionFromDay(day: {
     if (c === 96 || c === 99) return cond("Onweer met hagel", "storm_hail");
     if (c === 95) return cond("Onweer", "storm");
     if (c === 56 || c === 57 || c === 66 || c === 67) return cond("IJzel", "sleet");
+    // Scheen de zon het grootste deel van de dag, dan overheerst de zon het
+    // beeld: een zonnige bui, geen dichte regenwolk. Gold al voor buien
+    // (80–82), maar net zo goed voor motregen en lichte regen — anders krijgt
+    // een dag met 14 zonuren en 1,8 mm een icoon dat de zon verzwijgt.
+    if (day.sunFraction >= 0.5) return cond("Zonnige bui", "sun_shower");
     if (c >= 51 && c <= 55) return cond("Motregen", "drizzle");
-    if (c >= 80 && c <= 82) {
-      if (day.sunFraction >= 0.5) return cond("Zonnige bui", "sun_shower");
-      if (day.sunFraction >= 0.3) return cond("Buien", "showers");
-    }
+    if (c >= 80 && c <= 82 && day.sunFraction >= 0.3)
+      return cond("Buien", "showers");
     return rainCond(day.precip, "day");
   }
 
@@ -467,13 +470,15 @@ export function conditionFromHour(hour: {
     if (c === 96 || c === 99) return cond("Onweer met hagel", "storm_hail");
     if (c === 95) return cond("Onweer", "storm");
     if (c === 56 || c === 57 || c === 66 || c === 67) return cond("IJzel", "sleet");
-    if (c >= 51 && c <= 55) return cond("Motregen", "drizzle");
     if (c >= 71 && c <= 77) return snowByCode(c);
     if (c === 85 || c === 86) return cond("Sneeuwbuien", "snow_showers");
-    if (c >= 80 && c <= 82)
-      return hour.sunMinutes >= 20
-        ? cond("Zonnige bui", "sun_shower")
-        : cond("Buien", "showers");
+    // Scheen de zon een flink deel van het uur, dan is het een zonnige bui en
+    // geen dichte regenwolk. Dat gold al voor buien (80–82), maar net zo goed
+    // voor motregen en lichte regen: anders krijgt een uur met 60 minuten zon
+    // en 0,3 mm een icoon dat de zon volledig verzwijgt.
+    if (hour.sunMinutes >= 20) return cond("Zonnige bui", "sun_shower");
+    if (c >= 51 && c <= 55) return cond("Motregen", "drizzle");
+    if (c >= 80 && c <= 82) return cond("Buien", "showers");
     return rainCond(hour.precip, "hour");
   }
   if (hour.sunMinutes >= 50) return cond("Onbewolkt", "sky_0");
