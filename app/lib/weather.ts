@@ -182,8 +182,11 @@ async function fetchForecasts(
   return results.flat();
 }
 
+/** De drie dagwaarden waarop we twee modellen tegen elkaar leggen. */
+export type ModelDayValues = { tMax: number; precip: number; sunHours: number };
+
 /** Detecteer significante verschillen tussen GFS en KNMI modellen. */
-function detectDivergence(gfs: DailyForecast, knmi: DailyForecast): { diverges: boolean; reason?: string } {
+function detectDivergence(gfs: ModelDayValues, knmi: ModelDayValues): { diverges: boolean; reason?: string } {
   const reasons: string[] = [];
 
   // Temperatuur verschil > 2°C
@@ -732,7 +735,47 @@ export type DailyDetail = {
   sunFraction: number; // aandeel zon t.o.v. daglengte (0–1) → voor het icoon
   windBft: number; // windkracht (Beaufort)
   windDir: number; // dominante windrichting (graden, waar de wind vandaan komt)
+  /**
+   * Model-vergelijking (GFS vs KNMI) op dagniveau, enkel aanwezig als beide
+   * modellen significant afwijken. Bevat het vergeleken paar zélf, want dat
+   * gaat over de dagtotalen — niet over de overdag-gecorrigeerde `precip`
+   * hierboven, die alleen voor de weergave dient.
+   */
+  divergence?: { reason: string; gfs: ModelDayValues; knmi: ModelDayValues };
 };
+
+/** Dagvelden van het KNMI-model, enkel voor de vergelijking met GFS. */
+const KNMI_COMPARE_VARS =
+  "temperature_2m_max,precipitation_sum,sunshine_duration";
+
+/**
+ * Haalt de KNMI-dagwaarden op voor één plaats, gemapt op datum. Faalt stil:
+ * zonder KNMI tonen we simpelweg geen divergentie-markering.
+ */
+async function fetchKnmiDayValues(
+  point: LatLon,
+  days: number,
+): Promise<Map<string, ModelDayValues> | null> {
+  try {
+    const url =
+      `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
+      `&daily=${KNMI_COMPARE_VARS}&forecast_days=${days}&timezone=auto&models=knmi_seamless`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const d = (await res.json()).daily;
+    const byDate = new Map<string, ModelDayValues>();
+    for (let i = 0; i < (d?.time?.length ?? 0); i++) {
+      byDate.set(d.time[i], {
+        tMax: d.temperature_2m_max?.[i] ?? 0,
+        precip: d.precipitation_sum?.[i] ?? 0,
+        sunHours: (d.sunshine_duration?.[i] ?? 0) / 3600,
+      });
+    }
+    return byDate;
+  } catch {
+    return null;
+  }
+}
 
 /** Windsnelheid (km/u) → Beaufort. */
 export function windToBeaufort(kmh: number): number {
@@ -766,7 +809,12 @@ export async function fetchDailyDetail(
     `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
     `&daily=${DETAIL_VARS}&hourly=${DETAIL_HOURLY_VARS}&forecast_days=${days}&timezone=auto`;
 
-  const res = await fetch(url);
+  // KNMI parallel erbij voor de model-vergelijking; mislukt die, dan tonen we
+  // gewoon geen divergentie-markering.
+  const [res, knmiByDate] = await Promise.all([
+    fetch(url),
+    fetchKnmiDayValues(point, days),
+  ]);
   assertOk(res);
 
   const data = await res.json();
@@ -816,6 +864,16 @@ export async function fetchDailyDetail(
         ? e.wetCode
         : e.dryCode
       : d.weather_code[i] ?? 0;
+
+    // Model-vergelijking op de onbewerkte dagtotalen van beide modellen.
+    const knmi = knmiByDate?.get(date);
+    const gfsDay: ModelDayValues = {
+      tMax: d.temperature_2m_max[i] ?? 0,
+      precip: d.precipitation_sum[i] ?? 0,
+      sunHours: sunSec / 3600,
+    };
+    const cmp = knmi ? detectDivergence(gfsDay, knmi) : null;
+
     return {
       date,
       tMin: Math.round(d.temperature_2m_min[i]),
@@ -827,6 +885,10 @@ export async function fetchDailyDetail(
       sunFraction: dayLight > 0 ? clamp(sunSec / dayLight, 0, 1) : 0,
       windBft: windToBeaufort(d.wind_speed_10m_max[i] ?? 0),
       windDir: d.wind_direction_10m_dominant[i] ?? 0,
+      divergence:
+        cmp?.diverges && cmp.reason && knmi
+          ? { reason: cmp.reason, gfs: gfsDay, knmi }
+          : undefined,
     };
   });
 }

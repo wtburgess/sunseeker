@@ -29,7 +29,6 @@ import {
   fetchCurrents,
   fetchDailies,
   fetchMinutelyForecast,
-  isInKnmiDomain,
   RATE_LIMIT,
   type CurrentWeather,
   type DayLite,
@@ -40,7 +39,7 @@ import { type City } from "../lib/cities";
 import { COUNTRY_LABELS } from "../lib/countryLabels";
 import { REGION_LABELS } from "../lib/regionLabels";
 import { type Favorite } from "../lib/favorites";
-import { distanceKm, type LatLon } from "../lib/geo";
+import { distanceKm } from "../lib/geo";
 import { weatherGlyphSvg } from "../lib/weatherGlyphs";
 
 type Coords = { lat: number; lon: number };
@@ -657,8 +656,6 @@ export default function LiveMap({
   const [range, setRange] = useState<{ from: number; to: number } | null>(null);
   // Minstens X goede dagen in de geselecteerde periode.
   const [minGoodDays, setMinGoodDays] = useState(1);
-  // Divergence-modal: welke dag divergeert?
-  const [divergenceDay, setDivergenceDay] = useState<(typeof centerDays)[0] | null>(null);
 
   // Actueel weer + meerdaagse verwachting op de eigen locatie ophalen.
   useEffect(() => {
@@ -1220,7 +1217,6 @@ export default function LiveMap({
         onStep={selectStep}
         playing={playing}
         onTogglePlay={() => setPlaying((p) => !p)}
-        onDivergenceClick={setDivergenceDay}
       />
 
       {/* Regenradar overlay — zweeft net onder de drie ronde knoppen rechts
@@ -1234,98 +1230,6 @@ export default function LiveMap({
         />
       )}
 
-      {/* Divergence-uitleg modal */}
-      {divergenceDay && (
-        <DivergenceModal
-          day={divergenceDay}
-          point={center}
-          onClose={() => setDivergenceDay(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-/** Modal: uitleg wanneer GFS en KNMI modellen divergeren. */
-function DivergenceModal({
-  day,
-  point,
-  onClose,
-}: {
-  day: DayLite;
-  point: LatLon;
-  onClose: () => void;
-}) {
-  // Binnen het KNMI-domein is het een lokaal hoge-resolutie model; daarbuiten
-  // vergelijken we feitelijk twee globale modellen en is "KNMI is nauwkeuriger"
-  // niet te onderbouwen.
-  const localModel = isInKnmiDomain(point.lat, point.lon);
-  const tempDiff = day.knmiTMax !== undefined ? Math.abs(day.tMax - day.knmiTMax) : 0;
-  const rainDiff = day.knmiPrecip !== undefined ? Math.abs(day.precip - day.knmiPrecip) : 0;
-  const sunDiff = day.knmiSunHours !== undefined ? Math.abs(day.sunHours - day.knmiSunHours) : 0;
-
-  return (
-    <div
-      className="fixed inset-0 bg-black/50 z-[2000] flex items-center justify-center p-4 animate-fade-in"
-      onClick={onClose}
-    >
-      <div
-        className="bg-surface rounded-2xl border-2 border-outline-variant max-w-[400px] p-4 stamp-shadow"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center gap-2 mb-3">
-          <div className="text-[24px]">⚠️</div>
-          <h2 className="font-headline-sm text-[18px] text-on-surface">
-            Modellen divergeren
-          </h2>
-        </div>
-
-        <div className="text-[13px] text-on-surface-variant mb-3">
-          {day.divergenceReason?.includes("temp") && (
-            <div>
-              🌡️ <strong>Temperatuur:</strong> GFS zegt {day.tMax}°C, KNMI zegt{" "}
-              {day.knmiTMax}°C (verschil {tempDiff.toFixed(1)}°C)
-            </div>
-          )}
-          {day.divergenceReason?.includes("rain") && (
-            <div>
-              🌧️ <strong>Regen:</strong> GFS zegt {day.precip.toFixed(1)}mm, KNMI zegt{" "}
-              {day.knmiPrecip?.toFixed(1)}mm (verschil {rainDiff.toFixed(1)}mm)
-            </div>
-          )}
-          {day.divergenceReason?.includes("sun") && (
-            <div>
-              ☀️ <strong>Zon:</strong> GFS zegt {day.sunHours.toFixed(1)}u, KNMI zegt{" "}
-              {day.knmiSunHours?.toFixed(1)}u (verschil {sunDiff.toFixed(1)}u)
-            </div>
-          )}
-        </div>
-
-        <p className="text-[12px] text-on-surface-variant leading-snug mb-3">
-          {localModel ? (
-            <>
-              <strong>Advies:</strong> KNMI draait hier als lokaal hoge-resolutie model
-              (Benelux en Noordzee) en is voor deze regio doorgaans nauwkeuriger dan het
-              globale GFS. Zijn beide modellen het eens, dan is de kans groot dat het klopt;
-              wijken ze af, dan <strong>weegt KNMI hier zwaarder</strong>.
-            </>
-          ) : (
-            <>
-              <strong>Let op:</strong> deze plek ligt buiten het KNMI-modelgebied (Benelux en
-              Noordzee). Je vergelijkt hier dus twee globale modellen, en{" "}
-              <strong>geen van beide is aantoonbaar nauwkeuriger</strong>. Het verschil zegt
-              wél iets: hoe groter, hoe onzekerder deze dag.
-            </>
-          )}
-        </p>
-
-        <button
-          onClick={onClose}
-          className="w-full px-3 py-2 rounded-lg bg-primary text-on-primary font-headline-sm text-[13px] uppercase active-press"
-        >
-          Sluit
-        </button>
-      </div>
     </div>
   );
 }
@@ -1337,14 +1241,12 @@ function Timeline({
   onStep,
   playing,
   onTogglePlay,
-  onDivergenceClick,
 }: {
   days: DayLite[];
   step: Step;
   onStep: (s: Step) => void;
   playing: boolean;
   onTogglePlay: () => void;
-  onDivergenceClick?: (day: DayLite) => void;
 }) {
   // Actieve chip in beeld houden (mee-scrollen als hij buiten beeld valt).
   const activeRef = useRef<HTMLButtonElement | null>(null);
@@ -1437,7 +1339,6 @@ function Timeline({
               sub={fmtDayMonth(d.date)}
               diverges={d.diverges}
               divergenceReason={d.divergenceReason}
-              onDivergenceClick={() => onDivergenceClick?.(d)}
             />
           ))}
         </div>
@@ -1454,7 +1355,6 @@ function Chip({
   sub,
   diverges,
   divergenceReason,
-  onDivergenceClick,
 }: {
   active: boolean;
   innerRef?: Ref<HTMLButtonElement>;
@@ -1463,7 +1363,6 @@ function Chip({
   sub: string;
   diverges?: boolean;
   divergenceReason?: string;
-  onDivergenceClick?: () => void;
 }) {
   return (
     <div className="relative shrink-0">
@@ -1481,18 +1380,17 @@ function Chip({
         </div>
         <div className="text-[12px] mt-0.5 h-3.5">{sub}</div>
       </button>
+      {/* Onzekere dag: modellen zijn het oneens. Enkel een visuele hint — de
+          uitleg staat in de detailpagina, waar ruimte is voor een raakbare
+          knop en de cijfers erbij. */}
       {diverges && (
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onDivergenceClick?.();
-          }}
-          className="absolute -top-1 -right-1 bg-warning text-on-warning rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold cursor-help hover:scale-110 transition-transform"
-          title={`Modellen divergeren: ${divergenceReason}`}
-          aria-label={`Model-divergentie: ${divergenceReason}`}
+        <span
+          aria-hidden="true"
+          title={`Modellen divergeren (${divergenceReason}) — zie de detailpagina`}
+          className="absolute -top-1 -right-1 bg-secondary-container text-on-secondary-container rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold pointer-events-none"
         >
           ⚠
-        </button>
+        </span>
       )}
     </div>
   );
