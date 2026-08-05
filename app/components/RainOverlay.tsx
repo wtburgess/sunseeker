@@ -321,8 +321,8 @@ export function RainOverlay({
       {/* Legenda-regel */}
       <p style={{ margin: 0, fontSize: "12px", color: "#999" }}>
         {data?.hasBuienradar === true
-          ? "Komend 2 uur per 5 min · daarna per uur (± 8 u vooruit)"
-          : "Komend ... per uur (± 8 u vooruit)"}
+          ? "Komend uur per 5 min · daarna per uur (± 8 u vooruit)"
+          : "Komend uur per 15 min · daarna per uur (± 8 u vooruit)"}
       </p>
     </div>
   );
