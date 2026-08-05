@@ -81,6 +81,16 @@ const CHUNK_SIZE = 50;
 const clamp = (v: number, min: number, max: number) =>
   Math.min(max, Math.max(min, v));
 
+/**
+ * Ligt de locatie binnen het gebied waar KNMI SEAMLESS een lokaal hoge-resolutie
+ * model draait (HARMONIE, Benelux + Noordzee)? Daarbuiten valt Open-Meteo terug
+ * op een globaal model, en zegt een verschil met GFS niets over lokale precisie.
+ * Ruime benadering van het modeldomein — geen exacte domeingrens.
+ */
+export function isInKnmiDomain(lat: number, lon: number): boolean {
+  return lat >= 49 && lat <= 55 && lon >= 2 && lon <= 9;
+}
+
 /** Check of locatie in Nederland ligt (voor KNMI 5-min radar nowcast). */
 function isInNetherlands(lat: number, lon: number): boolean {
   // Nederland bounding box (incl. wat marge voor nauwkeurigheid)

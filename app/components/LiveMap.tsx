@@ -29,6 +29,7 @@ import {
   fetchCurrents,
   fetchDailies,
   fetchMinutelyForecast,
+  isInKnmiDomain,
   RATE_LIMIT,
   type CurrentWeather,
   type DayLite,
@@ -39,7 +40,7 @@ import { type City } from "../lib/cities";
 import { COUNTRY_LABELS } from "../lib/countryLabels";
 import { REGION_LABELS } from "../lib/regionLabels";
 import { type Favorite } from "../lib/favorites";
-import { distanceKm } from "../lib/geo";
+import { distanceKm, type LatLon } from "../lib/geo";
 import { weatherGlyphSvg } from "../lib/weatherGlyphs";
 
 type Coords = { lat: number; lon: number };
@@ -1237,6 +1238,7 @@ export default function LiveMap({
       {divergenceDay && (
         <DivergenceModal
           day={divergenceDay}
+          point={center}
           onClose={() => setDivergenceDay(null)}
         />
       )}
@@ -1247,11 +1249,17 @@ export default function LiveMap({
 /** Modal: uitleg wanneer GFS en KNMI modellen divergeren. */
 function DivergenceModal({
   day,
+  point,
   onClose,
 }: {
   day: DayLite;
+  point: LatLon;
   onClose: () => void;
 }) {
+  // Binnen het KNMI-domein is het een lokaal hoge-resolutie model; daarbuiten
+  // vergelijken we feitelijk twee globale modellen en is "KNMI is nauwkeuriger"
+  // niet te onderbouwen.
+  const localModel = isInKnmiDomain(point.lat, point.lon);
   const tempDiff = day.knmiTMax !== undefined ? Math.abs(day.tMax - day.knmiTMax) : 0;
   const rainDiff = day.knmiPrecip !== undefined ? Math.abs(day.precip - day.knmiPrecip) : 0;
   const sunDiff = day.knmiSunHours !== undefined ? Math.abs(day.sunHours - day.knmiSunHours) : 0;
@@ -1272,7 +1280,7 @@ function DivergenceModal({
           </h2>
         </div>
 
-        <p className="text-[13px] text-on-surface-variant mb-3">
+        <div className="text-[13px] text-on-surface-variant mb-3">
           {day.divergenceReason?.includes("temp") && (
             <div>
               🌡️ <strong>Temperatuur:</strong> GFS zegt {day.tMax}°C, KNMI zegt{" "}
@@ -1291,12 +1299,24 @@ function DivergenceModal({
               {day.knmiSunHours?.toFixed(1)}u (verschil {sunDiff.toFixed(1)}u)
             </div>
           )}
-        </p>
+        </div>
 
         <p className="text-[12px] text-on-surface-variant leading-snug mb-3">
-          <strong>Advies:</strong> KNMI HARMONIE is lokaal zeer nauwkeurig voor België. Als beide
-          modellen het erover eens zijn, is het zeer waarschijnlijk. Wanneer ze divergeren, is
-          de werkelijkheid waarschijnlijk ergens in het midden, maar <strong>KNMI is betrouwbaarder voor regio-specifieke voorspellingen</strong>.
+          {localModel ? (
+            <>
+              <strong>Advies:</strong> KNMI draait hier als lokaal hoge-resolutie model
+              (Benelux en Noordzee) en is voor deze regio doorgaans nauwkeuriger dan het
+              globale GFS. Zijn beide modellen het eens, dan is de kans groot dat het klopt;
+              wijken ze af, dan <strong>weegt KNMI hier zwaarder</strong>.
+            </>
+          ) : (
+            <>
+              <strong>Let op:</strong> deze plek ligt buiten het KNMI-modelgebied (Benelux en
+              Noordzee). Je vergelijkt hier dus twee globale modellen, en{" "}
+              <strong>geen van beide is aantoonbaar nauwkeuriger</strong>. Het verschil zegt
+              wél iets: hoe groter, hoe onzekerder deze dag.
+            </>
+          )}
         </p>
 
         <button
