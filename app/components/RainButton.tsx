@@ -17,44 +17,49 @@ export function RainButton({
 }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState<MinutelyData | null>(null);
-  const [loading, setLoading] = useState(false);
 
-  // Andere plaats → paneel sluiten en cache wissen.
+  // Meteen ophalen, niet pas bij de eerste klik: zonder die data weten we niet
+  // of er regen op komst is, en dan kan de knop ook niet waarschuwen.
   useEffect(() => {
+    let active = true;
     setOpen(false);
     setData(null);
+    fetchMinutelyForecast(place)
+      .then((d) => active && setData(d))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
   }, [place]);
 
-  // Toggle: klik opent het paneel, nog eens klikken sluit het weer.
-  const toggleRain = () => {
-    if (open) {
-      setOpen(false);
-      return;
-    }
-    setOpen(true);
-    if (data || loading) return;
-    setLoading(true);
-    fetchMinutelyForecast(place)
-      .then(setData)
-      .catch(() => {})
-      .finally(() => setLoading(false));
-  };
+  const rainExpected =
+    !!data &&
+    (data.nextHour.some((m) => m.precip > 0.1) ||
+      data.nextHours.some((h) => h.precip > 0.1));
+  const alert = rainExpected && !open;
 
   return (
     <>
       <button
-        onClick={toggleRain}
+        onClick={() => setOpen((v) => !v)}
         aria-label="Regenvoorspelling"
         aria-pressed={open}
+        title={
+          rainExpected
+            ? "Regen verwacht! Klik voor details"
+            : "Regenvoorspelling volgende uur"
+        }
         className={`w-10 h-10 shrink-0 rounded-full border-2 flex items-center justify-center active-press ${
           open
             ? "bg-primary border-primary"
             : "border-outline-variant hover:bg-surface-container-high"
-        }`}
+        } ${alert ? "rain-alert" : ""}`}
       >
         <Icon
           name="raindrops"
-          className={`text-[24px] ${open ? "text-on-primary" : "text-primary"}`}
+          className={`text-[24px] ${open ? "text-on-primary" : "text-primary"} ${
+            alert ? "rain-alert-icon" : ""
+          }`}
         />
       </button>
       {open && data && (

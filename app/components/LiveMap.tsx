@@ -2,14 +2,6 @@
 
 import "leaflet/dist/leaflet.css";
 
-// Zwaardere regen-alert pulsatie
-const rainAlertStyle = `
-  @keyframes rainfAlert {
-    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(157, 61, 34, 0.7); }
-    50% { opacity: 0.3; box-shadow: 0 0 8px 4px rgba(200, 80, 50, 0.5); }
-  }
-  .rain-alert { animation: rainfAlert 1.5s ease-in-out infinite; }
-`;
 import L from "leaflet";
 import { useCallback, useEffect, useRef, useState, type Ref } from "react";
 import {
@@ -614,14 +606,6 @@ export default function LiveMap({
   favorites: Favorite[];
   onSelect: (place: { name: string; lat: number; lon: number }) => void;
 }) {
-  // Inject regen-alert animatie
-  useEffect(() => {
-    const style = document.createElement("style");
-    style.textContent = rainAlertStyle;
-    document.head.appendChild(style);
-    return () => style.remove();
-  }, []);
-
   const [cur, setCur] = useState<CurrentWeather | null>(null);
   const [centerDays, setCenterDays] = useState<DayLite[]>([]);
   const [nearby, setNearby] = useState<NearbyPlace[]>([]);
@@ -1114,13 +1098,35 @@ export default function LiveMap({
         <Icon name="tune" filled className="text-[24px]" />
       </button>
 
-      {/* Weericonen-knop */}
+      {/* Regenradar-knop — pulseert wanneer er regen verwacht wordt. Staat
+          boven de weericonen-knop, zodat die er vlak onder valt. */}
+      <button
+        onClick={() => setShowRainOverlay((v) => !v)}
+        aria-label="Regenvoorspelling"
+        title={hasRainExpected ? "Regen verwacht! Klik voor details" : "Regenvoorspelling volgende uur"}
+        className={`absolute z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
+          favorites.length > 0 ? "top-[181px]" : "top-[125px]"
+        } right-3 ${
+          showRainOverlay
+            ? "bg-primary text-on-primary"
+            : "bg-surface text-primary border-2 border-outline-variant"
+        } ${hasRainExpected && !showRainOverlay ? "rain-alert" : ""}`}
+      >
+        <Icon
+          name="raindrops"
+          className={`text-[24px] ${
+            hasRainExpected && !showRainOverlay ? "rain-alert-icon" : ""
+          }`}
+        />
+      </button>
+
+      {/* Weericonen-knop, onder het regenicoon */}
       <button
         onClick={() => setShowWeatherIcons((v) => !v)}
         aria-label="Weericonen"
         title="Weericonen tonen/verbergen"
         className={`absolute z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
-          favorites.length > 0 ? "top-[181px]" : "top-[125px]"
+          favorites.length > 0 ? "top-[237px]" : "top-[181px]"
         } right-3 ${
           showWeatherIcons
             ? "bg-primary text-on-primary"
@@ -1128,22 +1134,6 @@ export default function LiveMap({
         }`}
       >
         <Icon name="wb_sunny" className="text-[24px]" />
-      </button>
-
-      {/* Regenradar-knop — pulseer wanneer regen verwacht wordt */}
-      <button
-        onClick={() => setShowRainOverlay((v) => !v)}
-        aria-label="Regenvoorspelling"
-        title={hasRainExpected ? "Regen verwacht! Klik voor details" : "Regenvoorspelling volgende uur"}
-        className={`absolute z-[1000] w-12 h-12 rounded-full flex items-center justify-center stamp-shadow active-press ${
-          favorites.length > 0 ? "top-[237px]" : "top-[181px]"
-        } right-3 ${
-          showRainOverlay
-            ? "bg-primary text-on-primary"
-            : "bg-surface text-primary border-2 border-outline-variant"
-        } ${hasRainExpected ? "rain-alert" : ""}`}
-      >
-        <Icon name="raindrops" className="text-[24px]" />
       </button>
 
       {/* Eigen zoombediening: +/– met het actuele zoomniveau eronder. */}
