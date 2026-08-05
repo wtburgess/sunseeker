@@ -402,6 +402,42 @@ input[type="range"]::-moz-range-thumb {
   animation: float-bob 2.4s ease-in-out infinite;
 }
 
+/* ── Regen op komst ────────────────────────────────────────────────────── */
+/* De regenknop trekt de aandacht wanneer er neerslag verwacht wordt: de knop
+   zwelt, de rand knippert rood en er slaat een rode gloed omheen. Wordt zowel
+   op de kaart als in het dagdetail gebruikt. */
+@keyframes rain-alert {
+  0%,
+  100% {
+    border-color: var(--color-outline-variant);
+    box-shadow: 0 0 0 0 rgba(186, 26, 26, 0);
+    transform: scale(1);
+  }
+  50% {
+    border-color: var(--color-error);
+    box-shadow: 0 0 12px 5px rgba(186, 26, 26, 0.55);
+    transform: scale(1.1);
+  }
+}
+
+@keyframes rain-alert-icon {
+  0%,
+  100% {
+    color: var(--color-primary);
+  }
+  50% {
+    color: var(--color-error);
+  }
+}
+
+.rain-alert {
+  animation: rain-alert 1.1s ease-in-out infinite;
+}
+
+.rain-alert .rain-alert-icon {
+  animation: rain-alert-icon 1.1s ease-in-out infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in,
   .animate-stamp-in,
@@ -410,7 +446,9 @@ input[type="range"]::-moz-range-thumb {
   .animate-compass-in,
   .animate-wiggle,
   .animate-float,
-  .animate-slide-up {
+  .animate-slide-up,
+  .rain-alert,
+  .rain-alert .rain-alert-icon {
     animation: none;
   }
 }
