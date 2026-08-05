@@ -544,6 +544,8 @@ export type MinutelyData = {
   now: MinutelyForecast;
   nextHour: MinutelyForecast[]; // kwartier-punten binnen ± het volgende uur
   nextHours: HourlyRain[]; // uurlijkse neerslag ná het eerste uur
+  /** True bij BUIENRADAR (5-min, NL); false/afwezig bij Open-Meteo. Stuurt de legenda. */
+  hasBuienradar?: boolean;
 };
 
 /** Haalt het weer-op-dit-moment op voor één punt (Open-Meteo `current`). */
