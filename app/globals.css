@@ -446,10 +446,22 @@ input[type="range"]::-moz-range-thumb {
   .animate-compass-in,
   .animate-wiggle,
   .animate-float,
-  .animate-slide-up,
-  .rain-alert,
+  .animate-slide-up {
+    animation: none;
+  }
+
+  /* De regen-alert is informatie, geen versiering: wie beweging heeft
+     uitgezet, mag de waarschuwing niet mislopen. Ze valt stil, maar blijft
+     staan als een vaste rode rand met gloed. */
+  .rain-alert {
+    animation: none;
+    border-color: var(--color-error);
+    box-shadow: 0 0 10px 3px rgba(186, 26, 26, 0.45);
+  }
+
   .rain-alert .rain-alert-icon {
     animation: none;
+    color: var(--color-error);
   }
 }
 
