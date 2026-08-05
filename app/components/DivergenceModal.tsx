@@ -1,35 +1,35 @@
 "use client";
 
-import { isInKnmiDomain, type ModelDayValues } from "../lib/weather";
+import { isInKnmiDomain } from "../lib/weather";
+
+const nl1 = (n: number) =>
+  n.toLocaleString("nl-BE", {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
 
 /**
- * Uitleg waarom twee weermodellen (GFS en KNMI) het oneens zijn over een dag.
- *
- * Binnen het KNMI-domein draait KNMI als lokaal hoge-resolutie model en weegt
- * het zwaarder. Daarbuiten valt Open-Meteo terug op een globaal model — dan
- * vergelijk je twee globale modellen en is geen van beide aantoonbaar beter.
+ * Uitleg waarom de twee weermodellen het oneens zijn over de neerslag van een
+ * dag. Temperatuur en zonuren middelen we stilzwijgend — daar is het gemiddelde
+ * beter dan elk model apart. Bij regen kan dat niet: het gemiddelde van 0 en
+ * 10 mm is 5 mm, een dag die geen van beide modellen voorspelt.
  */
 export function DivergenceModal({
-  reason,
-  gfs,
-  knmi,
+  gfsPrecip,
+  knmiPrecip,
   point,
   dateLabel,
   onClose,
 }: {
-  reason: string;
-  gfs: ModelDayValues;
-  knmi: ModelDayValues;
+  gfsPrecip: number;
+  knmiPrecip: number;
   point: { lat: number; lon: number };
   dateLabel?: string;
   onClose: () => void;
 }) {
   const localModel = isInKnmiDomain(point.lat, point.lon);
-  const nl1 = (n: number) =>
-    n.toLocaleString("nl-BE", {
-      minimumFractionDigits: 1,
-      maximumFractionDigits: 1,
-    });
+  const droog = gfsPrecip < knmiPrecip ? "GFS" : "KNMI";
+  const nat = droog === "GFS" ? "KNMI" : "GFS";
 
   return (
     <div
@@ -43,51 +43,34 @@ export function DivergenceModal({
         <div className="flex items-center gap-2 mb-1">
           <div className="text-[24px]">⚠️</div>
           <h2 className="font-headline-sm text-[18px] text-on-surface">
-            Modellen divergeren
+            Onzeker over regen
           </h2>
         </div>
         {dateLabel && (
           <p className="text-[13px] text-outline mb-3">{dateLabel}</p>
         )}
 
-        <div className="text-[13px] text-on-surface-variant mb-3 flex flex-col gap-1">
-          {reason.includes("temp") && (
-            <div>
-              🌡️ <strong>Temperatuur:</strong> GFS zegt {nl1(gfs.tMax)}°C, KNMI zegt{" "}
-              {nl1(knmi.tMax)}°C (verschil {nl1(Math.abs(gfs.tMax - knmi.tMax))}°C)
-            </div>
-          )}
-          {reason.includes("rain") && (
-            <div>
-              🌧️ <strong>Regen:</strong> GFS zegt {nl1(gfs.precip)} mm, KNMI zegt{" "}
-              {nl1(knmi.precip)} mm (verschil{" "}
-              {nl1(Math.abs(gfs.precip - knmi.precip))} mm)
-            </div>
-          )}
-          {reason.includes("sun") && (
-            <div>
-              ☀️ <strong>Zon:</strong> GFS zegt {nl1(gfs.sunHours)} u, KNMI zegt{" "}
-              {nl1(knmi.sunHours)} u (verschil{" "}
-              {nl1(Math.abs(gfs.sunHours - knmi.sunHours))} u)
-            </div>
-          )}
+        <div className="text-[13px] text-on-surface-variant mb-3">
+          🌧️ <strong>GFS</strong> zegt {nl1(gfsPrecip)} mm,{" "}
+          <strong>KNMI</strong> zegt {nl1(knmiPrecip)} mm over de hele dag
+          (verschil {nl1(Math.abs(gfsPrecip - knmiPrecip))} mm).
         </div>
 
         <p className="text-[12px] text-on-surface-variant leading-snug mb-3">
+          Temperatuur en zonuren tonen we als gemiddelde van beide modellen, want
+          daar helpt middelen. Bij regen niet: het gemiddelde zou een dag
+          opleveren die geen van beide modellen voorspelt.{" "}
           {localModel ? (
             <>
-              <strong>Advies:</strong> KNMI draait hier als lokaal hoge-resolutie
-              model (Benelux en Noordzee) en is voor deze regio doorgaans
-              nauwkeuriger dan het globale GFS. Zijn beide modellen het eens, dan
-              is de kans groot dat het klopt; wijken ze af, dan{" "}
-              <strong>weegt KNMI hier zwaarder</strong>.
+              KNMI draait hier als lokaal hoge-resolutie model (Benelux en
+              Noordzee) en <strong>weegt hier dus zwaarder</strong> — die zegt{" "}
+              {nl1(knmiPrecip)} mm.
             </>
           ) : (
             <>
-              <strong>Let op:</strong> deze plek ligt buiten het KNMI-modelgebied
-              (Benelux en Noordzee). Je vergelijkt hier dus twee globale modellen,
-              en <strong>geen van beide is aantoonbaar nauwkeuriger</strong>. Het
-              verschil zegt wél iets: hoe groter, hoe onzekerder deze dag.
+              Deze plek ligt buiten het KNMI-modelgebied, dus{" "}
+              <strong>geen van beide is hier aantoonbaar nauwkeuriger</strong>.
+              Houd rekening met het natste scenario ({nat}).
             </>
           )}
         </p>

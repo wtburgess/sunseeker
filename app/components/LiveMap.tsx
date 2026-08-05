@@ -1337,8 +1337,6 @@ function Timeline({
               innerRef={step === i ? activeRef : undefined}
               label={fmtWeekday(d.date)}
               sub={fmtDayMonth(d.date)}
-              diverges={d.diverges}
-              divergenceReason={d.divergenceReason}
             />
           ))}
         </div>
@@ -1353,16 +1351,12 @@ function Chip({
   stepValue,
   label,
   sub,
-  diverges,
-  divergenceReason,
 }: {
   active: boolean;
   innerRef?: Ref<HTMLButtonElement>;
   stepValue: Step;
   label: string;
   sub: string;
-  diverges?: boolean;
-  divergenceReason?: string;
 }) {
   return (
     <div className="relative shrink-0">
@@ -1380,18 +1374,6 @@ function Chip({
         </div>
         <div className="text-[12px] mt-0.5 h-3.5">{sub}</div>
       </button>
-      {/* Onzekere dag: modellen zijn het oneens. Enkel een visuele hint — de
-          uitleg staat in de detailpagina, waar ruimte is voor een raakbare
-          knop en de cijfers erbij. */}
-      {diverges && (
-        <span
-          aria-hidden="true"
-          title={`Modellen divergeren (${divergenceReason}) — zie de detailpagina`}
-          className="absolute -top-1 -right-1 bg-secondary-container text-on-secondary-container rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold pointer-events-none"
-        >
-          ⚠
-        </span>
-      )}
     </div>
   );
 }

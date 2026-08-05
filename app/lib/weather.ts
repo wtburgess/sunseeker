@@ -182,33 +182,19 @@ async function fetchForecasts(
   return results.flat();
 }
 
-/** De drie dagwaarden waarop we twee modellen tegen elkaar leggen. */
-export type ModelDayValues = { tMax: number; precip: number; sunHours: number };
+/** Gemiddelde van twee modelwaarden; zonder tweede model de eerste ongewijzigd. */
+const meanOf = (a: number, b: number | undefined) =>
+  b === undefined ? a : (a + b) / 2;
 
-/** Detecteer significante verschillen tussen GFS en KNMI modellen. */
-function detectDivergence(gfs: ModelDayValues, knmi: ModelDayValues): { diverges: boolean; reason?: string } {
-  const reasons: string[] = [];
-
-  // Temperatuur verschil > 2°C
-  if (Math.abs(gfs.tMax - knmi.tMax) > 2) {
-    reasons.push("temp");
-  }
-
-  // Neerslag verschil > 1mm
-  if (Math.abs(gfs.precip - knmi.precip) > 1) {
-    reasons.push("rain");
-  }
-
-  // Zonuren verschil > 1 uur
-  if (Math.abs(gfs.sunHours - knmi.sunHours) > 1) {
-    reasons.push("sun");
-  }
-
-  return {
-    diverges: reasons.length > 0,
-    reason: reasons.length > 0 ? reasons.join("+") : undefined,
-  };
-}
+/**
+ * Drempel (mm) waarboven de modellen het "oneens" zijn over de neerslag.
+ *
+ * Temperatuur en zonuren middelen we gewoon: dat zijn continue grootheden waar
+ * het gemiddelde van twee modellen dichter bij de werkelijkheid ligt. Neerslag
+ * niet: het gemiddelde van 0 mm en 10 mm is 5 mm, een dag die géén van beide
+ * modellen voorspelt. Daar is de onenigheid zélf het signaal, dus tonen we die.
+ */
+const RAIN_DIVERGENCE_MM = 1;
 
 /** Lichte dagverwachting per plaats, voor de kaart-tijdlijn en het filter. */
 export type DayLite = {
@@ -216,15 +202,9 @@ export type DayLite = {
   tMax: number;
   precip: number; // mm over de hele dag
   snow: number; // cm sneeuwval over de hele dag
-  sunHours: number; // zonuren
+  sunHours: number; // zonuren — gemiddelde van GFS en KNMI
   sunFraction: number;
   code: number;
-  // Model-vergelijking: wanneer GFS en KNMI divergeren
-  knmiTMax?: number; // KNMI-model temperatuur (als beschikbaar)
-  knmiPrecip?: number; // KNMI neerslag
-  knmiSunHours?: number; // KNMI zonuren
-  diverges?: boolean; // true als modellen significant verschillen
-  divergenceReason?: string; // "temp", "rain", "sun" of combinatie
 };
 
 /** Meerdaagse dagverwachting (lite) voor meerdere plaatsen, gebatcht. */
@@ -243,24 +223,18 @@ export async function fetchDailies(
 
     return gfsDays.map((gfs, dayIdx) => {
       const knmi = knmiDays?.[dayIdx];
-      const { diverges, reason } = knmi
-        ? detectDivergence(gfs, knmi)
-        : { diverges: false };
 
+      // Temperatuur en zon: gemiddelde van beide modellen. Neerslag houden we
+      // op GFS — middelen zou een dag opleveren die geen van beide voorspelt,
+      // en de kaartscore ("droog?") moet op één model blijven staan.
       return {
         date: gfs.date,
-        tMax: gfs.tMax,
+        tMax: meanOf(gfs.tMax, knmi?.tMax),
         precip: gfs.precip,
         snow: gfs.snow,
-        sunHours: gfs.sunHours,
-        sunFraction: gfs.sunFraction,
+        sunHours: meanOf(gfs.sunHours, knmi?.sunHours),
+        sunFraction: meanOf(gfs.sunFraction, knmi?.sunFraction),
         code: gfs.code,
-        // KNMI vergelijking
-        knmiTMax: knmi?.tMax,
-        knmiPrecip: knmi?.precip,
-        knmiSunHours: knmi?.sunHours,
-        diverges,
-        divergenceReason: reason,
       };
     });
   });
@@ -736,26 +710,34 @@ export type DailyDetail = {
   windBft: number; // windkracht (Beaufort)
   windDir: number; // dominante windrichting (graden, waar de wind vandaan komt)
   /**
-   * Model-vergelijking (GFS vs KNMI) op dagniveau, enkel aanwezig als beide
-   * modellen significant afwijken. Bevat het vergeleken paar zélf, want dat
-   * gaat over de dagtotalen — niet over de overdag-gecorrigeerde `precip`
-   * hierboven, die alleen voor de weergave dient.
+   * Alleen aanwezig als de modellen het significant oneens zijn over de
+   * neerslag. Bevat de vergeleken dagtotalen zélf — niet de overdag-
+   * gecorrigeerde `precip` hierboven, die enkel voor de weergave dient.
    */
-  divergence?: { reason: string; gfs: ModelDayValues; knmi: ModelDayValues };
+  divergence?: { gfsPrecip: number; knmiPrecip: number };
 };
 
-/** Dagvelden van het KNMI-model, enkel voor de vergelijking met GFS. */
+/** Dagwaarden van het KNMI-model, om te middelen en te vergelijken met GFS. */
+type KnmiDayValues = {
+  tMax: number;
+  tMin: number;
+  precip: number;
+  sunHours: number;
+  sunFraction: number;
+};
+
 const KNMI_COMPARE_VARS =
-  "temperature_2m_max,precipitation_sum,sunshine_duration";
+  "temperature_2m_max,temperature_2m_min,precipitation_sum," +
+  "sunshine_duration,daylight_duration";
 
 /**
  * Haalt de KNMI-dagwaarden op voor één plaats, gemapt op datum. Faalt stil:
- * zonder KNMI tonen we simpelweg geen divergentie-markering.
+ * zonder KNMI tonen we gewoon de GFS-waarden zonder middeling.
  */
 async function fetchKnmiDayValues(
   point: LatLon,
   days: number,
-): Promise<Map<string, ModelDayValues> | null> {
+): Promise<Map<string, KnmiDayValues> | null> {
   try {
     const url =
       `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
@@ -763,12 +745,16 @@ async function fetchKnmiDayValues(
     const res = await fetch(url);
     if (!res.ok) return null;
     const d = (await res.json()).daily;
-    const byDate = new Map<string, ModelDayValues>();
+    const byDate = new Map<string, KnmiDayValues>();
     for (let i = 0; i < (d?.time?.length ?? 0); i++) {
+      const sunSec = d.sunshine_duration?.[i] ?? 0;
+      const dayLight = d.daylight_duration?.[i] ?? 0;
       byDate.set(d.time[i], {
         tMax: d.temperature_2m_max?.[i] ?? 0,
+        tMin: d.temperature_2m_min?.[i] ?? 0,
         precip: d.precipitation_sum?.[i] ?? 0,
-        sunHours: (d.sunshine_duration?.[i] ?? 0) / 3600,
+        sunHours: sunSec / 3600,
+        sunFraction: dayLight > 0 ? clamp(sunSec / dayLight, 0, 1) : 0,
       });
     }
     return byDate;
@@ -865,29 +851,26 @@ export async function fetchDailyDetail(
         : e.dryCode
       : d.weather_code[i] ?? 0;
 
-    // Model-vergelijking op de onbewerkte dagtotalen van beide modellen.
+    // Temperatuur en zon: gemiddelde van GFS en KNMI. Neerslag niet middelen —
+    // bij grote onenigheid tonen we in plaats daarvan een markering.
     const knmi = knmiByDate?.get(date);
-    const gfsDay: ModelDayValues = {
-      tMax: d.temperature_2m_max[i] ?? 0,
-      precip: d.precipitation_sum[i] ?? 0,
-      sunHours: sunSec / 3600,
-    };
-    const cmp = knmi ? detectDivergence(gfsDay, knmi) : null;
+    const gfsPrecipDay = d.precipitation_sum[i] ?? 0;
+    const gfsSunFraction = dayLight > 0 ? clamp(sunSec / dayLight, 0, 1) : 0;
 
     return {
       date,
-      tMin: Math.round(d.temperature_2m_min[i]),
-      tMax: Math.round(d.temperature_2m_max[i]),
-      sunHours: sunSec / 3600,
+      tMin: Math.round(meanOf(d.temperature_2m_min[i] ?? 0, knmi?.tMin)),
+      tMax: Math.round(meanOf(d.temperature_2m_max[i] ?? 0, knmi?.tMax)),
+      sunHours: meanOf(sunSec / 3600, knmi?.sunHours),
       precip,
       precipProb,
       code,
-      sunFraction: dayLight > 0 ? clamp(sunSec / dayLight, 0, 1) : 0,
+      sunFraction: meanOf(gfsSunFraction, knmi?.sunFraction),
       windBft: windToBeaufort(d.wind_speed_10m_max[i] ?? 0),
       windDir: d.wind_direction_10m_dominant[i] ?? 0,
       divergence:
-        cmp?.diverges && cmp.reason && knmi
-          ? { reason: cmp.reason, gfs: gfsDay, knmi }
+        knmi && Math.abs(gfsPrecipDay - knmi.precip) > RAIN_DIVERGENCE_MM
+          ? { gfsPrecip: gfsPrecipDay, knmiPrecip: knmi.precip }
           : undefined,
     };
   });
