@@ -1469,12 +1469,17 @@ function FilterPanel({
         </button>
         {showHelp && (
           <p className="pl-[50px] pr-4 pb-2 text-[13px] leading-snug text-on-surface-variant">
-            Toon alleen plaatsen die passen bij het weer dat jij zoekt: kies een
-            straal (afstand), een min.- en max.-temperatuur, minimum zonuren, en
-            een minimum of maximum aan regen en sneeuw. Met de{" "}
-            <strong>presets</strong> (zon, regen, sneeuw) zet je alles in één tik
-            goed; Reset wist je keuzes. Plaatsen die niet aan je filter voldoen,
-            vervagen (grijs bolletje).
+            Toon alleen plaatsen die passen bij het weer dat jij zoekt. Kies
+            eerst een <strong>periode</strong>: de eerste tik zet de begindag, de
+            tweede de einddag; nog eens op dezelfde dag wist je keuze. Kies je
+            geen periode, dan geldt de dag die de tijdlijn toont. Met{" "}
+            <strong>minstens x goede dagen</strong> bepaal je hoeveel dagen in
+            die periode moeten kloppen. Stel daaronder je weer in —
+            temperatuur, zonuren, regen en sneeuw — en onderaan de{" "}
+            <strong>afstand</strong>, de straal rond je plaats. De{" "}
+            <strong>presets</strong> (zon, regen, sneeuw) zetten alles in één tik
+            goed; <strong>Reset</strong> wist je keuzes. Plaatsen die niet
+            voldoen, vervagen tot een grijs bolletje.
           </p>
         )}
 
@@ -1482,9 +1487,19 @@ function FilterPanel({
             begindag, tweede tik de einddag; opnieuw op dezelfde dag wist de
             keuze. */}
         <div className="px-4 py-3 border-b border-outline-variant">
-          <div className="font-headline-sm text-[13px] uppercase tracking-wide text-on-surface mb-2 flex items-center justify-between gap-2">
-            <span>Periode</span>
-            <span className="text-[14px] normal-case tracking-normal font-normal text-on-surface-variant">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0 text-on-surface">
+              <span className="shrink-0 w-[26px] flex justify-center">
+                <Icon
+                  name="date_range"
+                  className="text-[26px] text-on-surface-variant"
+                />
+              </span>
+              <span className="font-headline-sm text-[18px] uppercase truncate">
+                Periode
+              </span>
+            </div>
+            <span className="shrink-0 text-[14px] text-on-surface-variant">
               {range && centerDays[range.from] && centerDays[range.to]
                 ? range.from === range.to
                   ? `${fmtWeekday(centerDays[range.from].date)} ${fmtDayMonth(centerDays[range.from].date)} — kies de einddag`
