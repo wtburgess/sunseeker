@@ -129,6 +129,15 @@ function assertOk(res: Response) {
 const DAILY_VARS =
   "temperature_2m_max,precipitation_sum,snowfall_sum,precipitation_probability_max,cloud_cover_mean,sunshine_duration,daylight_duration,weather_code";
 
+/** Open-Meteo's standaard is `best_match`, níét GFS: laat je `models` weg, dan
+ *  kiest de API zelf een model (in de Benelux vaak hetzelfde als KNMI, waardoor
+ *  "middelen" neerkomt op hetzelfde getal met zichzelf middelen). GFS moet je
+ *  dus expliciet vragen. */
+const MODEL_PARAM: Record<"gfs" | "knmi_seamless", string> = {
+  gfs: "gfs_seamless",
+  knmi_seamless: "knmi_seamless",
+};
+
 async function fetchForecastChunk(
   points: LatLon[],
   tripDays: number,
@@ -139,7 +148,7 @@ async function fetchForecastChunk(
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
     `&daily=${DAILY_VARS}&forecast_days=${tripDays}&timezone=auto` +
-    `${model !== "gfs" ? `&models=${model}` : ""}`;
+    `&models=${MODEL_PARAM[model]}`;
 
   const res = await fetch(url);
   assertOk(res);
@@ -256,7 +265,7 @@ export async function fetchHourly(
     `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
     `&hourly=temperature_2m,cloud_cover,precipitation,precipitation_probability,` +
     `weather_code,sunshine_duration,is_day,wind_speed_10m,wind_direction_10m` +
-    `&start_date=${date}&end_date=${date}&timezone=auto`;
+    `&start_date=${date}&end_date=${date}&timezone=auto&models=gfs_seamless`;
 
   const res = await fetch(url);
   assertOk(res);
@@ -856,7 +865,8 @@ export async function fetchDailyDetail(
 ): Promise<DailyDetail[]> {
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
-    `&daily=${DETAIL_VARS}&hourly=${DETAIL_HOURLY_VARS}&forecast_days=${days}&timezone=auto`;
+    `&daily=${DETAIL_VARS}&hourly=${DETAIL_HOURLY_VARS}&forecast_days=${days}` +
+    `&timezone=auto&models=gfs_seamless`;
 
   // KNMI parallel erbij: om te middelen, om te vergelijken, en binnen de
   // Benelux als leidend model voor de neerslag. Mislukt die, dan tonen we
