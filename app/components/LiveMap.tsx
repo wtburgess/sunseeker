@@ -93,28 +93,6 @@ const fmtDayMonth = (iso: string) => {
   return `${d.getDate()}/${d.getMonth() + 1}`;
 };
 
-/** Bereken bereik voor "dit weekend" (komende zaterdag–zondag). */
-const thisWeekend = (days: DayLite[]): { from: number; to: number } | null => {
-  const now = new Date();
-  const today = now.getDay();
-  let daysUntilSat = (6 - today + 7) % 7;
-  if (daysUntilSat === 0) daysUntilSat = 7; // als vandaag zaterdag is, volgende zaterdag
-  return daysUntilSat < days.length && daysUntilSat + 1 < days.length
-    ? { from: daysUntilSat, to: daysUntilSat + 1 }
-    : null;
-};
-
-/** Bereken bereik voor "volgende week" (komende maandag–zondag). */
-const nextWeek = (days: DayLite[]): { from: number; to: number } | null => {
-  const now = new Date();
-  const today = now.getDay();
-  let daysUntilMon = (1 - today + 7) % 7;
-  if (daysUntilMon === 0) daysUntilMon = 7; // als vandaag maandag is, volgende maandag
-  return daysUntilMon < days.length && daysUntilMon + 6 < days.length
-    ? { from: daysUntilMon, to: Math.min(daysUntilMon + 6, days.length - 1) }
-    : null;
-};
-
 const ACCENT = "#9d3d22";
 
 /** Grenzen van de zoekrechthoek rond een middelpunt. */
@@ -1494,63 +1472,67 @@ function FilterPanel({
           </p>
         )}
 
-        <FilterRow
-          icon="straighten"
-          title="Afstand"
-          info="Toon enkel plaatsen binnen deze straal vanaf de gezochte plaats. Er wordt een cirkel op de kaart getekend."
-          display={maxDist >= FILTER_DIST_MAX ? "onbeperkt" : `${maxDist} km`}
-          value={maxDist}
-          min={FILTER_DIST_MIN}
-          max={FILTER_DIST_MAX}
-          step={10}
-          steps={DIST_STEPS}
-          onChange={setMaxDist}
-        />
-
-        {/* Periode kiezen: snelknoppen + bereik */}
+        {/* Periode kiezen: één icoontje per voorspelde dag. Eerste tik kiest de
+            begindag, tweede tik de einddag; opnieuw op dezelfde dag wist de
+            keuze. Het weericoon staat erin zodat je de periode kunt kiezen op
+            wat je ziet aankomen. */}
         <div className="px-4 py-3 border-b border-outline-variant">
-          <div className="font-headline-sm text-[13px] uppercase tracking-wide text-on-surface mb-2">
-            Periode
+          <div className="font-headline-sm text-[13px] uppercase tracking-wide text-on-surface mb-2 flex items-center justify-between gap-2">
+            <span>Periode</span>
+            <span className="text-[11px] normal-case tracking-normal font-normal text-on-surface-variant">
+              {range && centerDays[range.from] && centerDays[range.to]
+                ? range.from === range.to
+                  ? `${fmtWeekday(centerDays[range.from].date)} ${fmtDayMonth(centerDays[range.from].date)} — kies de einddag`
+                  : `${fmtWeekday(centerDays[range.from].date)} t/m ${fmtWeekday(centerDays[range.to].date)}`
+                : "alle dagen"}
+            </span>
           </div>
-          <div className="flex gap-1.5 flex-wrap">
-            <button
-              onClick={() => {
-                const w = thisWeekend(centerDays);
-                if (w) setRange(w);
-              }}
-              disabled={!thisWeekend(centerDays)}
-              className="px-2.5 py-1 rounded-lg text-[12px] font-headline-sm bg-surface-container-high text-on-surface-variant disabled:opacity-30 active-press"
-            >
-              Dit weekend
-            </button>
-            <button
-              onClick={() => {
-                const w = nextWeek(centerDays);
-                if (w) setRange(w);
-              }}
-              disabled={!nextWeek(centerDays)}
-              className="px-2.5 py-1 rounded-lg text-[12px] font-headline-sm bg-surface-container-high text-on-surface-variant disabled:opacity-30 active-press"
-            >
-              Volgende week
-            </button>
-            <button
-              onClick={() => setRange(null)}
-              className={`px-2.5 py-1 rounded-lg text-[12px] font-headline-sm active-press ${
-                range === null
-                  ? "bg-primary text-on-primary"
-                  : "bg-surface-container-high text-on-surface-variant"
-              }`}
-            >
-              Kies dagen
-            </button>
+          <div className="grid grid-cols-7 gap-1">
+            {centerDays.slice(0, TIMELINE_DAYS).map((d, i) => {
+              const cond = conditionFromDay(d);
+              const inRange =
+                range !== null && i >= range.from && i <= range.to;
+              return (
+                <button
+                  key={d.date}
+                  onClick={() => {
+                    if (!range) setRange({ from: i, to: i });
+                    else if (range.from === range.to)
+                      setRange(
+                        range.from === i
+                          ? null
+                          : {
+                              from: Math.min(range.from, i),
+                              to: Math.max(range.from, i),
+                            },
+                      );
+                    else setRange({ from: i, to: i });
+                  }}
+                  aria-pressed={inRange}
+                  aria-label={`${fmtWeekday(d.date)} ${fmtDayMonth(d.date)}`}
+                  className={`flex flex-col items-center gap-0.5 rounded-lg py-1 active-press ${
+                    inRange
+                      ? "bg-primary text-on-primary"
+                      : "bg-surface-container-high text-on-surface-variant"
+                  }`}
+                >
+                  <span className="text-[10px] leading-none capitalize">
+                    {fmtWeekday(d.date)}
+                  </span>
+                  <Icon
+                    name={cond.icon}
+                    filled={cond.filled}
+                    className={`text-[20px] leading-none ${
+                      inRange ? "text-on-primary" : cond.iconColor
+                    }`}
+                  />
+                  <span className="text-[9px] leading-none opacity-70">
+                    {fmtDayMonth(d.date)}
+                  </span>
+                </button>
+              );
+            })}
           </div>
-          {range && (
-            <div className="mt-2 text-[11px] text-on-surface-variant">
-              {centerDays[range.from]
-                ? `${fmtWeekday(centerDays[range.from].date)} tot ${fmtWeekday(centerDays[range.to].date)}`
-                : ""}
-            </div>
-          )}
         </div>
 
         {/* Minstens X goede dagen in de periode */}
@@ -1620,6 +1602,19 @@ function FilterPanel({
           max={20}
           step={1}
           onChange={setMinSnow}
+        />
+
+        <FilterRow
+          icon="straighten"
+          title="Afstand"
+          info="Toon enkel plaatsen binnen deze straal vanaf de gezochte plaats. Er wordt een cirkel op de kaart getekend."
+          display={maxDist >= FILTER_DIST_MAX ? "onbeperkt" : `${maxDist} km`}
+          value={maxDist}
+          min={FILTER_DIST_MIN}
+          max={FILTER_DIST_MAX}
+          step={10}
+          steps={DIST_STEPS}
+          onChange={setMaxDist}
         />
       </div>
     </div>
