@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import { HourDetail } from "./HourDetail";
 import { RainButton } from "./RainButton";
+import { DivergenceModal } from "./DivergenceModal";
 import {
   conditionFromDay,
   fetchDailyDetail,
@@ -65,6 +66,8 @@ export function CityDetail({
   const [error, setError] = useState(false);
   // Aangeklikte dag → uur-detail (over de daglijst).
   const [openDate, setOpenDate] = useState<string | null>(null);
+  // Aangeklikte divergentie-markering → uitleg welke modellen afwijken.
+  const [divergenceDay, setDivergenceDay] = useState<DailyDetail | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -148,7 +151,12 @@ export function CityDetail({
         ) : (
           <ul>
             {days.map((d) => (
-              <DayRow key={d.date} d={d} onOpen={setOpenDate} />
+              <DayRow
+                key={d.date}
+                d={d}
+                onOpen={setOpenDate}
+                onDivergence={setDivergenceDay}
+              />
             ))}
           </ul>
         )}
@@ -163,6 +171,17 @@ export function CityDetail({
           onClose={() => setOpenDate(null)}
         />
       )}
+
+      {divergenceDay?.divergence && (
+        <DivergenceModal
+          reason={divergenceDay.divergence.reason}
+          gfs={divergenceDay.divergence.gfs}
+          knmi={divergenceDay.divergence.knmi}
+          point={place}
+          dateLabel={`${fmtWeekday(divergenceDay.date)} ${fmtDayMonth(divergenceDay.date)}`}
+          onClose={() => setDivergenceDay(null)}
+        />
+      )}
     </div>
   );
 }
@@ -170,18 +189,20 @@ export function CityDetail({
 function DayRow({
   d,
   onOpen,
+  onDivergence,
 }: {
   d: DailyDetail;
   onOpen: (date: string) => void;
+  onDivergence: (d: DailyDetail) => void;
 }) {
   const cond = conditionFromDay(d);
   const hasRain = d.precip > 0;
   const hasProb = d.precipProb > 0;
   return (
-    <li className="border-b border-outline-variant">
+    <li className="border-b border-outline-variant flex items-stretch">
       <button
         onClick={() => onOpen(d.date)}
-        className="w-full flex items-center gap-2.5 px-3 py-1.5 text-left hover:bg-surface-container-high/60 active-press"
+        className="flex-grow min-w-0 flex items-center gap-2.5 pl-3 py-1.5 text-left hover:bg-surface-container-high/60 active-press"
       >
         {/* Dag + datum */}
         <div className="w-12 shrink-0 leading-none">
@@ -241,9 +262,27 @@ function DayRow({
           <span className="text-[12px] mt-0.5">{d.windBft} Bft</span>
         </div>
 
-        {/* Verder-pijltje: klik door naar de uur-lijst. */}
-        <Icon name="chevron_right" className="text-[26px] shrink-0 -mr-1 text-outline" />
       </button>
+
+      {/* Modellen oneens over deze dag. Eigen knop náást de rij-knop (knoppen
+          mogen niet nesten) en over de volle rijhoogte, zodat hij op een
+          touchscreen te raken is. */}
+      {d.divergence && (
+        <button
+          onClick={() => onDivergence(d)}
+          aria-label={`Modellen divergeren op ${fmtWeekday(d.date)} ${fmtDayMonth(d.date)} — bekijk uitleg`}
+          className="w-11 shrink-0 flex items-center justify-center active-press"
+        >
+          <span className="w-6 h-6 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center text-[13px] font-bold">
+            ⚠
+          </span>
+        </button>
+      )}
+
+      {/* Verder-pijltje: de rij zelf opent de uur-lijst. */}
+      <span className="shrink-0 flex items-center pr-3 pl-0.5 pointer-events-none">
+        <Icon name="chevron_right" className="text-[26px] text-outline" />
+      </span>
     </li>
   );
 }
