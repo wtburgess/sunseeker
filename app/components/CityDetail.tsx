@@ -174,9 +174,8 @@ export function CityDetail({
 
       {divergenceDay?.divergence && (
         <DivergenceModal
-          reason={divergenceDay.divergence.reason}
-          gfs={divergenceDay.divergence.gfs}
-          knmi={divergenceDay.divergence.knmi}
+          gfsPrecip={divergenceDay.divergence.gfsPrecip}
+          knmiPrecip={divergenceDay.divergence.knmiPrecip}
           point={place}
           dateLabel={`${fmtWeekday(divergenceDay.date)} ${fmtDayMonth(divergenceDay.date)}`}
           onClose={() => setDivergenceDay(null)}
@@ -199,10 +198,12 @@ function DayRow({
   const hasRain = d.precip > 0;
   const hasProb = d.precipProb > 0;
   return (
-    <li className="border-b border-outline-variant flex items-stretch">
+    // Hover op de <li>, niet op de knop: de knop beslaat maar het linkerdeel
+    // van de rij, dus anders stopt de markering halverwege.
+    <li className="border-b border-outline-variant flex items-stretch hover:bg-surface-container-high/60">
       <button
         onClick={() => onOpen(d.date)}
-        className="flex-grow min-w-0 flex items-center gap-2.5 pl-3 py-1.5 text-left hover:bg-surface-container-high/60 active-press"
+        className="flex-grow min-w-0 flex items-center gap-2.5 pl-3 py-1.5 text-left active-press"
       >
         {/* Dag + datum */}
         <div className="w-12 shrink-0 leading-none">
@@ -251,33 +252,38 @@ function DayRow({
           )}
         </div>
 
-        {/* Wind: pijl in de stroomrichting + Beaufort */}
-        <div className="w-11 shrink-0 flex flex-col items-center text-on-surface-variant leading-none">
-          <Icon
-            name="navigation"
-            filled
-            className="text-[20px]"
-            style={{ transform: `rotate(${d.windDir + 180}deg)` }}
-          />
-          <span className="text-[12px] mt-0.5">{d.windBft} Bft</span>
-        </div>
-
       </button>
 
-      {/* Modellen oneens over deze dag. Eigen knop náást de rij-knop (knoppen
-          mogen niet nesten) en over de volle rijhoogte, zodat hij op een
-          touchscreen te raken is. */}
-      {d.divergence && (
-        <button
-          onClick={() => onDivergence(d)}
-          aria-label={`Modellen divergeren op ${fmtWeekday(d.date)} ${fmtDayMonth(d.date)} — bekijk uitleg`}
-          className="w-11 shrink-0 flex items-center justify-center active-press"
-        >
-          <span className="w-6 h-6 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center text-[13px] font-bold">
-            ⚠
-          </span>
-        </button>
-      )}
+      {/* Modellen oneens over de regen. Vaste sleuf tussen de zonuren en de
+          windroos: ook zónder markering blijft hij gereserveerd, zodat de
+          windroos op elke rij op dezelfde plaats staat. Eigen knop náást de
+          rij-knop (knoppen mogen niet nesten), over de volle rijhoogte zodat
+          hij op een touchscreen te raken is. */}
+      <div className="w-11 shrink-0 flex items-stretch">
+        {d.divergence && (
+          <button
+            onClick={() => onDivergence(d)}
+            aria-label={`Modellen oneens over de regen op ${fmtWeekday(d.date)} ${fmtDayMonth(d.date)} — bekijk uitleg`}
+            className="w-full flex items-center justify-center active-press"
+          >
+            <span className="w-6 h-6 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center text-[13px] font-bold">
+              ⚠
+            </span>
+          </button>
+        )}
+      </div>
+
+      {/* Wind: pijl in de stroomrichting + Beaufort. Staat buiten de rij-knop
+          zodat de sleuf hierboven ertussen past. */}
+      <div className="w-11 shrink-0 flex flex-col items-center justify-center text-on-surface-variant leading-none pointer-events-none">
+        <Icon
+          name="navigation"
+          filled
+          className="text-[20px]"
+          style={{ transform: `rotate(${d.windDir + 180}deg)` }}
+        />
+        <span className="text-[12px] mt-0.5">{d.windBft} Bft</span>
+      </div>
 
       {/* Verder-pijltje: de rij zelf opent de uur-lijst. */}
       <span className="shrink-0 flex items-center pr-3 pl-0.5 pointer-events-none">
