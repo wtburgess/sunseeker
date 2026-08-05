@@ -8,9 +8,15 @@ interface MinutelyPoint {
   precip: number;
 }
 
+interface HourlyPoint {
+  time: string;
+  hoursAhead: number;
+  precip: number;
+}
+
 interface MinutelyData {
   nextHour: MinutelyPoint[];
-  nextHours: Array<{ time: string; hoursAhead: number; precip: number }>;
+  nextHours: HourlyPoint[];
   hasBuienradar?: boolean; // true if BUIENRADAR data is available
 }
 
@@ -159,9 +165,9 @@ export async function GET(req: NextRequest) {
           const now = new Date();
           const nowHours = Math.floor(now.getTime() / 3600000); // Hours since epoch
 
-          const omHourly = omData.hourly.precipitation
-            .map((precip: number, idx: number) => {
-              const timeStr = omData.hourly.time[idx];
+          const omHourly: HourlyPoint[] = (omData.hourly.precipitation as number[])
+            .map((precip: number, idx: number): HourlyPoint => {
+              const timeStr: string = omData.hourly.time[idx];
               const pointTime = new Date(timeStr);
               const pointHours = Math.floor(pointTime.getTime() / 3600000);
               const hoursAhead = pointHours - nowHours;
@@ -172,7 +178,7 @@ export async function GET(req: NextRequest) {
                 precip,
               };
             })
-            .filter((h) => h.hoursAhead > 0 && h.hoursAhead <= 8);
+            .filter((h: HourlyPoint) => h.hoursAhead > 0 && h.hoursAhead <= 8);
 
           if (omHourly.length > 0) {
             // Merge: BUIENRADAR for minutely, blend hourly data (prefer BUIENRADAR for 1-2, Open-Meteo for 3-8)
@@ -218,8 +224,8 @@ export async function GET(req: NextRequest) {
         const nowMinutes = Math.floor(now.getTime() / 60000);
 
         // Convert Open-Meteo 15-minute data to our format
-        const minutelyData: MinutelyPoint[] = omData.minutely_15.time
-          .map((timeStr: string, idx: number) => {
+        const minutelyData: MinutelyPoint[] = (omData.minutely_15.time as string[])
+          .map((timeStr: string, idx: number): MinutelyPoint => {
             const pointTime = new Date(timeStr);
             const pointMinutes = Math.floor(pointTime.getTime() / 60000);
             const minutesAhead = pointMinutes - nowMinutes;
@@ -230,7 +236,7 @@ export async function GET(req: NextRequest) {
               precip: (omData.minutely_15.precipitation[idx] || 0) / 4, // Convert mm/hour to mm/15min
             };
           })
-          .filter((m) => m.minute >= 0 && m.minute <= 120);
+          .filter((m: MinutelyPoint) => m.minute >= 0 && m.minute <= 120);
 
         // Also get hourly data for hours 2-8
         const hourlyUrl = new URL("https://api.open-meteo.com/v1/forecast");
@@ -245,9 +251,9 @@ export async function GET(req: NextRequest) {
           const hourData = await hourRes.json();
 
           if (hourData.hourly?.precipitation && hourData.hourly?.time) {
-            const omTimes = hourData.hourly.time;
-            const hourlyData = hourData.hourly.precipitation
-              .map((precip: number, idx: number) => {
+            const omTimes = hourData.hourly.time as string[];
+            const hourlyData: HourlyPoint[] = (hourData.hourly.precipitation as number[])
+              .map((precip: number, idx: number): HourlyPoint => {
                 const timeStr = omTimes[idx];
                 const pointTime = new Date(timeStr);
                 const pointHours = Math.floor(pointTime.getTime() / 3600000);
@@ -259,7 +265,7 @@ export async function GET(req: NextRequest) {
                   precip,
                 };
               })
-              .filter((h) => h.hoursAhead >= 2 && h.hoursAhead <= 8);
+              .filter((h: HourlyPoint) => h.hoursAhead >= 2 && h.hoursAhead <= 8);
 
             return NextResponse.json({
               nextHour: minutelyData.slice(0, 8), // ~2 hours of 15-min data
