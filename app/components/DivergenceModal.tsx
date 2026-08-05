@@ -57,20 +57,19 @@ export function DivergenceModal({
         </div>
 
         <p className="text-[12px] text-on-surface-variant leading-snug mb-3">
-          Temperatuur en zonuren tonen we als gemiddelde van beide modellen, want
-          daar helpt middelen. Bij regen niet: het gemiddelde zou een dag
-          opleveren die geen van beide modellen voorspelt.{" "}
           {localModel ? (
             <>
               KNMI draait hier als lokaal hoge-resolutie model (Benelux en
-              Noordzee) en <strong>weegt hier dus zwaarder</strong> — die zegt{" "}
-              {nl1(knmiPrecip)} mm.
+              Noordzee) en is voor regen leidend:{" "}
+              <strong>de lijst toont de KNMI-waarde</strong>. Houd er rekening
+              mee dat GFS er duidelijk naast zit.
             </>
           ) : (
             <>
               Deze plek ligt buiten het KNMI-modelgebied, dus{" "}
-              <strong>geen van beide is hier aantoonbaar nauwkeuriger</strong>.
-              Houd rekening met het natste scenario ({nat}).
+              <strong>de lijst toont de GFS-waarde</strong>. Geen van beide is
+              hier aantoonbaar nauwkeuriger — houd rekening met het natste
+              scenario ({nat}).
             </>
           )}
         </p>

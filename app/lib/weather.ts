@@ -220,21 +220,25 @@ export async function fetchDailies(
 
   return gfsForecasts.map((gfsDays, idx) => {
     const knmiDays = knmiForecasts?.[idx];
+    // Binnen de Benelux is KNMI het lokale hoge-resolutie model en leidend voor
+    // neerslag; daarbuiten is GFS de standaard.
+    const preferKnmi = isInKnmiDomain(points[idx].lat, points[idx].lon);
 
     return gfsDays.map((gfs, dayIdx) => {
       const knmi = knmiDays?.[dayIdx];
+      const rainModel = preferKnmi && knmi ? knmi : gfs;
 
-      // Temperatuur en zon: gemiddelde van beide modellen. Neerslag houden we
-      // op GFS — middelen zou een dag opleveren die geen van beide voorspelt,
-      // en de kaartscore ("droog?") moet op één model blijven staan.
+      // Temperatuur en zon: gemiddelde van beide modellen. Neerslag niet
+      // middelen — het gemiddelde van 0 en 10 mm is een dag die geen van beide
+      // modellen voorspelt — dus daar kiezen we het model van de regio.
       return {
         date: gfs.date,
         tMax: meanOf(gfs.tMax, knmi?.tMax),
-        precip: gfs.precip,
-        snow: gfs.snow,
+        precip: rainModel.precip,
+        snow: rainModel.snow,
         sunHours: meanOf(gfs.sunHours, knmi?.sunHours),
         sunFraction: meanOf(gfs.sunFraction, knmi?.sunFraction),
-        code: gfs.code,
+        code: rainModel.code,
       };
     });
   });
@@ -726,25 +730,79 @@ type KnmiDayValues = {
   sunFraction: number;
 };
 
+/** Samenvatting van de daglicht-uren van één kalenderdag. */
+type DaytimeAgg = {
+  precip: number;
+  precipProb: number;
+  wetCode: number;
+  wetPeak: number;
+  dryCode: number;
+};
+
+/**
+ * Vat de uurdata samen per kalenderdag, maar telt enkel de daglicht-uren mee.
+ *
+ * Per dag: som van de overdag-neerslag, hoogste regenkans overdag, en de code
+ * van het natste daguur (juist neerslag-type: bui/motregen/onweer…). Op een
+ * droge dag is er geen natte-uur-code, dus nemen we de zwaarste dag-code (die
+ * vangt mist/bewolking op). `timezone=auto` geeft de uren in lokale tijd, dus
+ * de datum staat vooraan in de tijdstring ("2026-07-28T14:00").
+ */
+function aggregateDaytime(h: {
+  time?: string[];
+  is_day?: number[];
+  precipitation?: number[];
+  precipitation_probability?: number[];
+  weather_code?: number[];
+}): Map<string, DaytimeAgg> {
+  const times = h.time ?? [];
+  const daytime = new Map<string, DaytimeAgg>();
+  for (let i = 0; i < times.length; i++) {
+    if ((h.is_day?.[i] ?? 0) !== 1) continue; // enkel daglicht
+    const date = times[i].slice(0, 10);
+    const p = h.precipitation?.[i] ?? 0;
+    const c = h.weather_code?.[i] ?? 0;
+    const prob = h.precipitation_probability?.[i] ?? 0;
+    const e =
+      daytime.get(date) ??
+      { precip: 0, precipProb: 0, wetCode: 0, wetPeak: -1, dryCode: 0 };
+    e.precip += p;
+    e.precipProb = Math.max(e.precipProb, prob);
+    e.dryCode = Math.max(e.dryCode, c);
+    if (p > e.wetPeak) {
+      e.wetPeak = p;
+      e.wetCode = c;
+    }
+    daytime.set(date, e);
+  }
+  return daytime;
+}
+
 const KNMI_COMPARE_VARS =
   "temperature_2m_max,temperature_2m_min,precipitation_sum," +
   "sunshine_duration,daylight_duration";
 
 /**
- * Haalt de KNMI-dagwaarden op voor één plaats, gemapt op datum. Faalt stil:
- * zonder KNMI tonen we gewoon de GFS-waarden zonder middeling.
+ * Haalt de KNMI-dag- én uurwaarden op voor één plaats. De uurdata is nodig
+ * omdat de detailrij de neerslag van de daglicht-uren toont, en KNMI binnen de
+ * Benelux leidend is voor regen. Faalt stil: zonder KNMI vallen we terug op GFS.
  */
 async function fetchKnmiDayValues(
   point: LatLon,
   days: number,
-): Promise<Map<string, KnmiDayValues> | null> {
+): Promise<{
+  byDate: Map<string, KnmiDayValues>;
+  daytime: Map<string, DaytimeAgg>;
+} | null> {
   try {
     const url =
       `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
-      `&daily=${KNMI_COMPARE_VARS}&forecast_days=${days}&timezone=auto&models=knmi_seamless`;
+      `&daily=${KNMI_COMPARE_VARS}&hourly=${DETAIL_HOURLY_VARS}` +
+      `&forecast_days=${days}&timezone=auto&models=knmi_seamless`;
     const res = await fetch(url);
     if (!res.ok) return null;
-    const d = (await res.json()).daily;
+    const json = await res.json();
+    const d = json.daily;
     const byDate = new Map<string, KnmiDayValues>();
     for (let i = 0; i < (d?.time?.length ?? 0); i++) {
       const sunSec = d.sunshine_duration?.[i] ?? 0;
@@ -757,7 +815,7 @@ async function fetchKnmiDayValues(
         sunFraction: dayLight > 0 ? clamp(sunSec / dayLight, 0, 1) : 0,
       });
     }
-    return byDate;
+    return { byDate, daytime: aggregateDaytime(json.hourly ?? {}) };
   } catch {
     return null;
   }
@@ -795,9 +853,10 @@ export async function fetchDailyDetail(
     `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
     `&daily=${DETAIL_VARS}&hourly=${DETAIL_HOURLY_VARS}&forecast_days=${days}&timezone=auto`;
 
-  // KNMI parallel erbij voor de model-vergelijking; mislukt die, dan tonen we
-  // gewoon geen divergentie-markering.
-  const [res, knmiByDate] = await Promise.all([
+  // KNMI parallel erbij: om te middelen, om te vergelijken, en binnen de
+  // Benelux als leidend model voor de neerslag. Mislukt die, dan tonen we
+  // gewoon GFS zonder middeling en zonder markering.
+  const [res, knmiData] = await Promise.all([
     fetch(url),
     fetchKnmiDayValues(point, days),
   ]);
@@ -806,44 +865,25 @@ export async function fetchDailyDetail(
   const data = await res.json();
   const d = data.daily;
 
-  // Uurdata samenvatten per kalenderdag, maar enkel de daglicht-uren meetellen.
-  // Per dag: som van de overdag-neerslag, hoogste regenkans overdag, en de code
-  // van het natste daguur (juist neerslag-type: bui/motregen/onweer…). Op een
-  // droge dag is er geen natte-uur-code, dus nemen we de zwaarste dag-code (die
-  // vangt mist/bewolking op). `timezone=auto` geeft de uren in lokale tijd, dus
-  // de datum staat vooraan in de tijdstring ("2026-07-28T14:00").
-  const h = data.hourly ?? {};
-  const times: string[] = h.time ?? [];
-  const daytime = new Map<
-    string,
-    { precip: number; precipProb: number; wetCode: number; wetPeak: number; dryCode: number }
-  >();
-  for (let i = 0; i < times.length; i++) {
-    if ((h.is_day?.[i] ?? 0) !== 1) continue; // enkel daglicht
-    const date = times[i].slice(0, 10);
-    const p = h.precipitation?.[i] ?? 0;
-    const c = h.weather_code?.[i] ?? 0;
-    const prob = h.precipitation_probability?.[i] ?? 0;
-    const e =
-      daytime.get(date) ??
-      { precip: 0, precipProb: 0, wetCode: 0, wetPeak: -1, dryCode: 0 };
-    e.precip += p;
-    e.precipProb = Math.max(e.precipProb, prob);
-    e.dryCode = Math.max(e.dryCode, c);
-    if (p > e.wetPeak) {
-      e.wetPeak = p;
-      e.wetCode = c;
-    }
-    daytime.set(date, e);
-  }
+  const knmiByDate = knmiData?.byDate;
+  const daytime = aggregateDaytime(data.hourly ?? {});
+  // Binnen de Benelux is KNMI het lokale hoge-resolutie model en dus leidend
+  // voor regen (mm, kans en het weericoon); daarbuiten is GFS de standaard.
+  const preferKnmi = isInKnmiDomain(point.lat, point.lon);
+  const rainDaytime =
+    preferKnmi && knmiData ? knmiData.daytime : daytime;
 
   return d.time.map((date: string, i: number): DailyDetail => {
     const sunSec = d.sunshine_duration[i] ?? 0;
     const dayLight = d.daylight_duration[i] ?? 0;
-    // Overdag-waarden; terugval op het 24-uurs dagtotaal als er (uitzonderlijk)
-    // geen uurdata voor deze dag is.
-    const e = daytime.get(date);
-    const precip = e ? e.precip : d.precipitation_sum[i] ?? 0;
+    const knmi = knmiByDate?.get(date);
+
+    // Overdag-waarden uit het regenmodel van deze regio; terugval op het
+    // 24-uurs dagtotaal als er (uitzonderlijk) geen uurdata voor deze dag is.
+    const e = rainDaytime.get(date);
+    const dayTotal =
+      (preferKnmi && knmi ? knmi.precip : d.precipitation_sum[i]) ?? 0;
+    const precip = e ? e.precip : dayTotal;
     const precipProb = e ? e.precipProb : d.precipitation_probability_max[i] ?? 0;
     const code = e
       ? e.precip > 0
@@ -853,7 +893,6 @@ export async function fetchDailyDetail(
 
     // Temperatuur en zon: gemiddelde van GFS en KNMI. Neerslag niet middelen —
     // bij grote onenigheid tonen we in plaats daarvan een markering.
-    const knmi = knmiByDate?.get(date);
     const gfsPrecipDay = d.precipitation_sum[i] ?? 0;
     const gfsSunFraction = dayLight > 0 ? clamp(sunSec / dayLight, 0, 1) : 0;
 

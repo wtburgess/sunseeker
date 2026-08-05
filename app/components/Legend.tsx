@@ -174,6 +174,54 @@ export function Legend({ onClose }: { onClose: () => void }) {
             </>
           }
         />
+
+        <SectionTitle>Weermodellen</SectionTitle>
+        <InfoRow
+          icon="thermostat"
+          title="Temperatuur en zon"
+          text={
+            <>
+              Het <strong>gemiddelde van GFS en KNMI</strong>. Van twee modellen
+              ligt het gemiddelde doorgaans dichter bij de werkelijkheid dan elk
+              model apart.
+            </>
+          }
+        />
+        <InfoRow
+          icon="rainy"
+          title="Regen en sneeuw"
+          text={
+            <>
+              Niet gemiddeld: het gemiddelde van 0 en 10 mm zou een dag opleveren
+              die geen van beide modellen voorspelt. In de{" "}
+              <strong>Benelux</strong> tonen we <strong>KNMI</strong>, het lokale
+              hoge-resolutie model; daarbuiten <strong>GFS</strong>.
+            </>
+          }
+        />
+        <InfoRow
+          icon="warning"
+          iconColor="text-secondary"
+          title="Driehoekje"
+          text={
+            <>
+              Verschillen de modellen meer dan 1 mm over een dag, dan verschijnt
+              in de daglijst een driehoekje. Tik erop voor beide waarden — die
+              dag is minder zeker dan de andere.
+            </>
+          }
+        />
+        <InfoRow
+          icon="water_drop"
+          title="Regen-Radar"
+          text={
+            <>
+              In Nederland <strong>Buienradar</strong>, per 5 minuten; elders
+              Open-Meteo per 15 minuten. Daarna beide per uur, tot ±8 uur
+              vooruit.
+            </>
+          }
+        />
       </div>
     </div>
   );
