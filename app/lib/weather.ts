@@ -83,26 +83,27 @@ const clamp = (v: number, min: number, max: number) =>
 
 /**
  * Ligt de locatie binnen het gebied waar KNMI SEAMLESS een lokaal hoge-resolutie
- * model draait (HARMONIE, Benelux + Noordzee)? Daarbuiten valt Open-Meteo terug
- * op een globaal model, en zegt een verschil met GFS niets over lokale precisie.
- * Ruime benadering van het modeldomein — geen exacte domeingrens.
+ * model draait (HARMONIE, Benelux + Noordzee)? Binnen dat gebied is KNMI de
+ * betrouwbaarste bron voor neerslag, daarbuiten GFS. Ruime benadering van het
+ * modeldomein — geen exacte domeingrens.
  */
-export function isInKnmiDomain(lat: number, lon: number): boolean {
+function isInKnmiDomain(lat: number, lon: number): boolean {
   return lat >= 49 && lat <= 55 && lon >= 2 && lon <= 9;
 }
 
-/** Check of locatie in Nederland ligt (voor KNMI 5-min radar nowcast). */
-function isInNetherlands(lat: number, lon: number): boolean {
-  // Nederland bounding box (incl. wat marge voor nauwkeurigheid)
-  const NL_LAT_MIN = 50.7;
-  const NL_LAT_MAX = 53.6;
-  const NL_LON_MIN = 3.3;
-  const NL_LON_MAX = 7.3;
-  return lat >= NL_LAT_MIN && lat <= NL_LAT_MAX && lon >= NL_LON_MIN && lon <= NL_LON_MAX;
+/**
+ * Ligt de locatie in het bereik van de Buienradar-nowcast (5 minuten)? Het
+ * radarbeeld dekt Nederland én België — Vlaanderen dus volledig; de API weigert
+ * zelf alles daarbuiten. Deze doos is bewust iets ruimer dan beide landen: valt
+ * een punt er net buiten, dan antwoordt Buienradar met 404 en vallen we terug
+ * op Open-Meteo. Te ruim kost één vergeefse vraag, te krap kost de radar.
+ */
+function hasRadarCoverage(lat: number, lon: number): boolean {
+  return lat >= 49.4 && lat <= 53.7 && lon >= 2.4 && lon <= 7.3;
 }
 
-/** Haal KNMI 5-min regen-nowcast op via server API (eerste 2 uur). */
-async function fetchKnmiRainNowcast(point: LatLon): Promise<MinutelyData | null> {
+/** Haal de 5-minuten regen-nowcast (Buienradar) op via de eigen server-route. */
+async function fetchRadarNowcast(point: LatLon): Promise<MinutelyData | null> {
   try {
     const res = await fetch(
       `/api/weather/knmi-rain?lat=${point.lat}&lon=${point.lon}`,
@@ -111,7 +112,7 @@ async function fetchKnmiRainNowcast(point: LatLon): Promise<MinutelyData | null>
     if (!res.ok) return null;
     return await res.json();
   } catch (e) {
-    console.debug("KNMI nowcast fetch failed:", e);
+    console.debug("Radar-nowcast mislukt:", e);
     return null;
   }
 }
@@ -195,16 +196,6 @@ async function fetchForecasts(
 const meanOf = (a: number, b: number | undefined) =>
   b === undefined ? a : (a + b) / 2;
 
-/**
- * Drempel (mm) waarboven de modellen het "oneens" zijn over de neerslag.
- *
- * Temperatuur en zonuren middelen we gewoon: dat zijn continue grootheden waar
- * het gemiddelde van twee modellen dichter bij de werkelijkheid ligt. Neerslag
- * niet: het gemiddelde van 0 mm en 10 mm is 5 mm, een dag die géén van beide
- * modellen voorspelt. Daar is de onenigheid zélf het signaal, dus tonen we die.
- */
-const RAIN_DIVERGENCE_MM = 1;
-
 /** Lichte dagverwachting per plaats, voor de kaart-tijdlijn en het filter. */
 export type DayLite = {
   date: string;
@@ -253,9 +244,65 @@ export async function fetchDailies(
   });
 }
 
+/** Uurvelden voor het uur-detail. */
+const HOURLY_VARS =
+  "temperature_2m,cloud_cover,precipitation,precipitation_probability," +
+  "weather_code,sunshine_duration,is_day,wind_speed_10m,wind_direction_10m";
+
+/** Getal of `undefined`: buiten het bereik van een model geeft Open-Meteo `null`. */
+const numOr = (v: unknown): number | undefined =>
+  typeof v === "number" && Number.isFinite(v) ? v : undefined;
+
+/** Eén uur uit het KNMI-model; ontbrekende velden blijven `undefined`. */
+type KnmiHourValues = {
+  temp?: number;
+  cloud?: number;
+  precip?: number;
+  precipProb?: number;
+  code?: number;
+  sunMinutes?: number;
+};
+
+/** Uurwaarden van het lokale hoge-resolutiemodel (KNMI) voor één dag. Faalt
+ *  stil: zonder KNMI blijft GFS over. */
+async function fetchKnmiHours(
+  point: LatLon,
+  date: string,
+): Promise<Map<string, KnmiHourValues> | null> {
+  try {
+    const url =
+      `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
+      `&hourly=${HOURLY_VARS}&start_date=${date}&end_date=${date}` +
+      `&timezone=auto&models=knmi_seamless`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const h = (await res.json()).hourly ?? {};
+    const byTime = new Map<string, KnmiHourValues>();
+    for (let i = 0; i < (h.time?.length ?? 0); i++) {
+      const sunSec = numOr(h.sunshine_duration?.[i]);
+      byTime.set(h.time[i], {
+        temp: numOr(h.temperature_2m?.[i]),
+        cloud: numOr(h.cloud_cover?.[i]),
+        precip: numOr(h.precipitation?.[i]),
+        precipProb: numOr(h.precipitation_probability?.[i]),
+        code: numOr(h.weather_code?.[i]),
+        sunMinutes: sunSec === undefined ? undefined : sunSec / 60,
+      });
+    }
+    return byTime;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Haalt het uur-voor-uur weer op voor één stad en één dag. Wordt pas
  * aangeroepen als de gebruiker een dag uitklapt, dus niet voor alle steden.
+ *
+ * Dezelfde modelkeuze als de dag-lijst, anders spreken beide schermen elkaar
+ * tegen: binnen het KNMI-domein komt de neerslag (mm, kans en code) van het
+ * lokale hoge-resolutiemodel, temperatuur en zon zijn het gemiddelde van beide
+ * modellen, en de wind komt van GFS.
  */
 export async function fetchHourly(
   point: LatLon,
@@ -263,29 +310,44 @@ export async function fetchHourly(
 ): Promise<HourForecast[]> {
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
-    `&hourly=temperature_2m,cloud_cover,precipitation,precipitation_probability,` +
-    `weather_code,sunshine_duration,is_day,wind_speed_10m,wind_direction_10m` +
+    `&hourly=${HOURLY_VARS}` +
     `&start_date=${date}&end_date=${date}&timezone=auto&models=gfs_seamless`;
 
-  const res = await fetch(url);
+  const [res, knmi] = await Promise.all([
+    fetch(url),
+    isInKnmiDomain(point.lat, point.lon)
+      ? fetchKnmiHours(point, date)
+      : Promise.resolve(null),
+  ]);
   assertOk(res);
 
   const data = await res.json();
   const h = data.hourly;
 
-  return h.time.map((time: string, i: number): HourForecast => ({
-    time,
-    hour: Number(time.slice(11, 13)),
-    temp: h.temperature_2m[i],
-    cloud: h.cloud_cover[i] ?? 0,
-    precip: h.precipitation[i] ?? 0,
-    precipProb: h.precipitation_probability[i] ?? 0,
-    code: h.weather_code[i] ?? 0,
-    sunMinutes: Math.round((h.sunshine_duration[i] ?? 0) / 60),
-    isDay: (h.is_day[i] ?? 0) === 1,
-    windBft: windToBeaufort(h.wind_speed_10m[i] ?? 0),
-    windDir: h.wind_direction_10m[i] ?? 0,
-  }));
+  return h.time.map((time: string, i: number): HourForecast => {
+    const k = knmi?.get(time);
+    // KNMI reikt minder ver vooruit dan GFS; zonder waarde voor dit uur blijft
+    // GFS staan in plaats van een gat.
+    const hasKnmiRain = k?.precip !== undefined;
+    return {
+      time,
+      hour: Number(time.slice(11, 13)),
+      temp: meanOf(numOr(h.temperature_2m[i]) ?? 0, k?.temp),
+      cloud: meanOf(numOr(h.cloud_cover[i]) ?? 0, k?.cloud),
+      precip: hasKnmiRain ? k!.precip! : h.precipitation[i] ?? 0,
+      precipProb:
+        (hasKnmiRain ? k!.precipProb : undefined) ??
+        h.precipitation_probability[i] ??
+        0,
+      code: (hasKnmiRain ? k!.code : undefined) ?? h.weather_code[i] ?? 0,
+      sunMinutes: Math.round(
+        meanOf((numOr(h.sunshine_duration[i]) ?? 0) / 60, k?.sunMinutes),
+      ),
+      isDay: (h.is_day[i] ?? 0) === 1,
+      windBft: windToBeaufort(h.wind_speed_10m[i] ?? 0),
+      windDir: h.wind_direction_10m[i] ?? 0,
+    };
+  });
 }
 
 /* ── Scoring ───────────────────────────────────────────────────────────── */
@@ -526,32 +588,55 @@ export type CurrentWeather = {
 };
 
 /**
- * Korte-termijn regenpunt uit Open-Meteo `minutely_15` (15-minuten resolutie —
- * de fijnste die de gratis API biedt; echte 1-minuut data is betaald).
+ * Eén tijdvak uit de korte-termijn regenverwachting. Het fijne deel (5 of 15
+ * minuten) en de uren erna hebben dezelfde vorm, zodat ze op één manier gelezen
+ * en getekend worden: elk punt beschrijft het tijdvak dat op `minutesAhead`
+ * begint en `spanMinutes` duurt.
  */
-export type MinutelyForecast = {
-  time: string; // lokale kloktijd van de plaats "2026-07-17T14:30" (geen offset)
-  minute: number; // minuten vanaf nu (0, 15, 30, 45, 60…) — voor de grafiek
-  precip: number; // mm in dat kwartier (× 4 = intensiteit mm/u)
-  precipProb: number; // % kans (niet beschikbaar op 15-min → 0)
+export type RainPoint = {
+  /** Lokale kloktijd van de plaats, "2026-07-17T14:30" (geen offset-marker). */
+  time: string;
+  /** Minuten vanaf het ophaalmoment tot het begin van dit tijdvak (bij het
+   *  lopende tijdvak licht negatief). */
+  minutesAhead: number;
+  /** Lengte van het tijdvak in minuten: 5 (Buienradar), 15 (Open-Meteo) of 60. */
+  spanMinutes: number;
+  /** Neerslag in dat tijdvak, in mm. */
+  precip: number;
+  /** Regenkans in % — 0 als de bron die niet geeft (radar). */
+  precipProb: number;
 };
 
-/** Eén uur uit de verlengde regenverwachting (na het eerste, minuut-fijne uur). */
-export type HourlyRain = {
-  time: string; // ISO tijd "2026-07-17T16:00"
-  hoursAhead: number; // 1, 2, 3… vanaf nu
-  precip: number; // mm in dat uur (= intensiteit mm/u)
-  precipProb: number; // % kans
-};
+/**
+ * Neerslag van een tijdvak als intensiteit in mm/u. Dat is de enige eenheid
+ * waarin een vak van 5 minuten en een heel uur met elkaar te vergelijken zijn:
+ * zonder deze omrekening staat het fijne deel van de grafiek op een andere
+ * schaal dan het uur-deel.
+ */
+export const rainIntensity = (p: RainPoint) =>
+  p.spanMinutes > 0 ? (p.precip * 60) / p.spanMinutes : 0;
 
-/** Korte-termijn regenvoorspelling: volgend uur (per 15 min) + uurlijks daarna. */
+/** Vanaf deze intensiteit (mm/u) noemen we het regen: één drempel voor de
+ *  alarmknop, de samenvatting en de uurverwachting. */
+export const RAIN_ALERT_MMH = 0.5;
+
+/** Korte-termijn regenvoorspelling: het komende uur fijn, daarna per klok-uur. */
 export type MinutelyData = {
-  now: MinutelyForecast;
-  nextHour: MinutelyForecast[]; // kwartier-punten binnen ± het volgende uur
-  nextHours: HourlyRain[]; // uurlijkse neerslag ná het eerste uur
-  /** True bij BUIENRADAR (5-min, NL); false/afwezig bij Open-Meteo. Stuurt de legenda. */
+  now: RainPoint;
+  /** Fijne punten van nu tot het eerstvolgende hele uur ná +60 min. */
+  nextHour: RainPoint[];
+  /** Volledige klok-uren die direct op het fijne deel aansluiten. */
+  nextHours: RainPoint[];
+  /** True bij Buienradar (5-min, NL); false/afwezig bij Open-Meteo. Stuurt de legenda. */
   hasBuienradar?: boolean;
 };
+
+/** Verwacht de korte-termijn voorspelling regen van betekenis? */
+export function nowcastHasRain(data: MinutelyData | null): boolean {
+  if (!data) return false;
+  const wet = (p: RainPoint) => rainIntensity(p) >= RAIN_ALERT_MMH;
+  return data.nextHour.some(wet) || data.nextHours.some(wet);
+}
 
 /** Haalt het weer-op-dit-moment op voor één punt (Open-Meteo `current`). */
 export async function fetchCurrent(point: LatLon): Promise<CurrentWeather> {
@@ -609,29 +694,53 @@ export async function fetchCurrents(
   return results.flat();
 }
 
-/** Aantal uurlijkse punten ná het eerste (kwartier-fijne) uur. */
-const RAIN_EXTRA_HOURS = 7;
-/** Aantal kwartier-punten in het korte-termijn deel (nu … +60 min). */
-const RAIN_QUARTERS = 5;
+/** Aantal hele uren dat we ná het fijne deel tonen (samen ± 8 u vooruit). */
+const RAIN_EXTRA_HOURS = 8;
 
 /**
- * Haalt de regenverwachting op: het volgende uur per 15 minuten (Open-Meteo
- * `minutely_15`) plus de ~7 uren daarna uurlijks (samen ~8 u vooruit). Beide in
- * één API-call.
+ * Korte cache op de regenverwachting. De kaart, de regenknop en de uurlijst
+ * vragen vlak na elkaar dezelfde voorspelling op; zonder cache is dat drie keer
+ * dezelfde call — en drie iets verschillende "nu"-momenten, waardoor de uurlijst
+ * andere cijfers kan tonen dan de regen-radar.
  */
-export async function fetchMinutelyForecast(point: LatLon): Promise<MinutelyData> {
-  // Probeer eerst KNMI (5-min, alleen Nederland, eerste 2h) → fallback naar Open-Meteo (15-min global, 6h)
-  if (isInNetherlands(point.lat, point.lon)) {
+const NOWCAST_TTL_MS = 2 * 60 * 1000;
+const nowcastCache = new Map<string, { at: number; data: Promise<MinutelyData> }>();
+
+/**
+ * Haalt de korte-termijn regenverwachting op: het komende uur fijn (5 minuten
+ * via Buienradar in Nederland, anders 15 minuten via Open-Meteo) plus de hele
+ * uren daarna, tot ± 8 u vooruit.
+ */
+export function fetchMinutelyForecast(point: LatLon): Promise<MinutelyData> {
+  const key = `${point.lat.toFixed(2)},${point.lon.toFixed(2)}`;
+  const hit = nowcastCache.get(key);
+  if (hit && Date.now() - hit.at < NOWCAST_TTL_MS) return hit.data;
+
+  const data = loadMinutelyForecast(point).catch((e) => {
+    nowcastCache.delete(key); // een mislukte poging niet blijven serveren
+    throw e;
+  });
+  nowcastCache.set(key, { at: Date.now(), data });
+  return data;
+}
+
+async function loadMinutelyForecast(point: LatLon): Promise<MinutelyData> {
+  // Binnen het radarbereik (Nederland en België) eerst de radar: 5 minuten
+  // fijn, twee uur vooruit. Daarbuiten blijft Open-Meteo over.
+  if (hasRadarCoverage(point.lat, point.lon)) {
     try {
-      const knmiResult = await fetchKnmiRainNowcast(point);
-      if (knmiResult) return knmiResult; // KNMI gelukt, gebruik die
+      const radar = await fetchRadarNowcast(point);
+      if (radar) return radar;
     } catch (e) {
-      // KNMI fallback naar Open-Meteo, loggen (console) maar niet fatal
-      console.debug("KNMI 5-min fallback naar Open-Meteo:", e);
+      // Radar niet bereikbaar: Open-Meteo doet het ook, alleen grover.
+      console.debug("Buienradar-nowcast valt terug op Open-Meteo:", e);
     }
   }
 
-  // Open-Meteo fallback (altijd beschikbaar, global)
+  // Het fijne deel (kwartieren) en de uren komen uit dezelfde call en dus uit
+  // hetzelfde model. Dat weegt hier zwaarder dan zelf een model kiezen: twee
+  // bronnen in één grafiek geven een sprong op de naad. Zonder `models` kiest
+  // Open-Meteo per regio het beste model — en als enige heeft dat kwartierdata.
   const url =
     `https://api.open-meteo.com/v1/forecast?latitude=${point.lat}&longitude=${point.lon}` +
     `&minutely_15=precipitation` +
@@ -652,44 +761,131 @@ export async function fetchMinutelyForecast(point: LatLon): Promise<MinutelyData
   const offsetSec: number = data.utc_offset_seconds ?? 0;
   const toMs = (local: string) => Date.parse(`${local}Z`) - offsetSec * 1000;
 
-  // Korte termijn: kwartier-punten vanaf het lopende kwartier tot +60 min.
-  const mq = data.minutely_15 ?? { time: [], precipitation: [] };
-  const raw: { tMs: number; local: string; precip: number }[] = [];
-  for (let i = 0; i < (mq.time?.length ?? 0); i++) {
-    const tMs = toMs(mq.time[i]);
-    if (tMs + 15 * 60 * 1000 <= nowMs) continue; // volledig voorbij
-    raw.push({ tMs, local: mq.time[i], precip: mq.precipitation?.[i] ?? 0 });
-    if (raw.length >= RAIN_QUARTERS) break;
-  }
-  const base0 = raw.length ? raw[0].tMs : nowMs;
-  const nextHour: MinutelyForecast[] = raw.map((q) => ({
-    time: q.local, // lokale kloktijd van de plaats
-    minute: Math.round((q.tMs - base0) / 60000),
-    precip: q.precip, // mm per kwartier
-    precipProb: 0,
-  }));
-
-  // Uurlijkse neerslag ná het eerste uur: neem de uur-markeringen die minstens
-  // ~1 uur in de toekomst liggen, zodat ze niet overlappen met het kwartier-deel.
+  // Uur-deel: begint op het eerste hele uur ná +60 min. Zo dekt het fijne deel
+  // altijd minstens het komende uur en sluiten beide delen exact op elkaar aan
+  // — geen gat, geen overlap, en dus een doorlopende lijn in de grafiek.
   const h = data.hourly ?? { time: [], precipitation: [], precipitation_probability: [] };
-  const cutoffMs = nowMs + 55 * 60 * 1000; // net vóór +1 u
-  const nextHours: HourlyRain[] = [];
+  const firstHourMs = nowMs + 60 * 60 * 1000;
+  const nextHours: RainPoint[] = [];
+  let splitMs = Number.POSITIVE_INFINITY;
   for (let i = 0; i < (h.time?.length ?? 0); i++) {
-    if (toMs(h.time[i]) < cutoffMs) continue;
+    const startMs = toMs(h.time[i]);
+    if (startMs < firstHourMs) continue;
+    if (nextHours.length === 0) splitMs = startMs;
     nextHours.push({
       time: h.time[i],
-      hoursAhead: nextHours.length + 1,
+      minutesAhead: Math.round((startMs - nowMs) / 60000),
+      spanMinutes: 60,
       precip: h.precipitation?.[i] ?? 0,
       precipProb: h.precipitation_probability?.[i] ?? 0,
     });
     if (nextHours.length >= RAIN_EXTRA_HOURS) break;
   }
 
+  // Fijn deel: elk kwartier dat nog niet voorbij is, tot aan de naad.
+  const mq = data.minutely_15 ?? { time: [], precipitation: [] };
+  const nextHour: RainPoint[] = [];
+  for (let i = 0; i < (mq.time?.length ?? 0); i++) {
+    const startMs = toMs(mq.time[i]);
+    if (startMs + 15 * 60 * 1000 <= nowMs) continue; // volledig voorbij
+    if (startMs >= splitMs) break; // hoort bij het uur-deel
+    nextHour.push({
+      time: mq.time[i],
+      minutesAhead: Math.round((startMs - nowMs) / 60000),
+      spanMinutes: 15,
+      precip: mq.precipitation?.[i] ?? 0,
+      precipProb: 0,
+    });
+  }
+
   return {
-    now: nextHour[0] ?? { time: mq.time?.[0] ?? "", minute: 0, precip: 0, precipProb: 0 },
+    now:
+      nextHour[0] ??
+      nextHours[0] ?? {
+        time: mq.time?.[0] ?? "",
+        minutesAhead: 0,
+        spanMinutes: 15,
+        precip: 0,
+        precipProb: 0,
+      },
     nextHour,
     nextHours,
   };
+}
+
+/** Vanaf zoveel mm in een uur laten we in de uurlijst regen zien. */
+const NOWCAST_WET_MM = 0.05;
+
+/**
+ * Weercode die past bij wat de radar ziet. Sneeuw, ijzel en onweer laten we
+ * staan: dat onderscheid kan een regenradar niet maken, het model wel.
+ */
+function codeWithNowcastRain(code: number, precip: number): number {
+  const keepType =
+    (code >= 56 && code <= 57) || // ijzel (aanvriezende motregen)
+    (code >= 66 && code <= 67) || // ijzel (aanvriezende regen)
+    (code >= 71 && code <= 77) || // sneeuw
+    code === 85 ||
+    code === 86 || // sneeuwbuien
+    code >= 95; // onweer
+  if (keepType) return code;
+
+  const modelIsWet = code >= 51;
+  if (precip >= NOWCAST_WET_MM) {
+    if (modelIsWet) return code; // model wist het al: motregen/buien behouden
+    if (precip < 0.4) return 51; // motregen
+    if (precip < 1.5) return 61; // lichte regen
+    if (precip < 4) return 63; // matige regen
+    return 65; // zware regen
+  }
+  // De radar ziet geen regen meer; een nat icoon zou de cijfers tegenspreken.
+  return modelIsWet ? 3 : code;
+}
+
+/**
+ * Legt de regenverwachting over de uurlijst: elk uur dat de korte-termijn
+ * voorspelling volledig dekt, krijgt haar neerslag — en het bijpassende icoon.
+ *
+ * De radar ziet buien die het weermodel op dat moment nog niet heeft, en
+ * omgekeerd. Zonder deze samenvoeging toont de regen-radar regen op een uur dat
+ * in de uurlijst droog staat: twee cijfers voor hetzelfde uur.
+ *
+ * Enkel volledig gedekte uren worden overschreven. Het lopende uur is voor een
+ * deel verleden tijd; de radarsom daarover valt lager uit dan het uurtotaal van
+ * het model, zonder dat dat iets over de verwachting zegt.
+ */
+export function mergeNowcastIntoHours(
+  hours: HourForecast[],
+  nowcast: MinutelyData | null,
+): HourForecast[] {
+  if (!nowcast) return hours;
+
+  // Sleutel = lokale datum + uur ("2026-07-18T14"), zodat we tijdzones en
+  // dagovergangen niet zelf hoeven uit te rekenen.
+  const byHour = new Map<string, { precip: number; prob?: number; covered: number }>();
+  const add = (p: RainPoint) => {
+    if (!p.time) return;
+    const key = p.time.slice(0, 13);
+    const e = byHour.get(key) ?? { precip: 0, covered: 0 };
+    e.precip += p.precip;
+    e.covered += p.spanMinutes;
+    if (p.spanMinutes >= 60) e.prob = p.precipProb;
+    byHour.set(key, e);
+  };
+  nowcast.nextHour.forEach(add);
+  nowcast.nextHours.forEach(add);
+
+  return hours.map((h) => {
+    const e = byHour.get(h.time.slice(0, 13));
+    if (!e || e.covered < 60) return h; // niet volledig gedekt: model behouden
+    const precip = e.precip < NOWCAST_WET_MM ? 0 : e.precip;
+    return {
+      ...h,
+      precip,
+      precipProb: e.prob ?? (precip > 0 ? h.precipProb : 0),
+      code: codeWithNowcastRain(h.code, precip),
+    };
+  });
 }
 
 /**
@@ -727,12 +923,6 @@ export type DailyDetail = {
   sunFraction: number; // aandeel zon t.o.v. daglengte (0–1) → voor het icoon
   windBft: number; // windkracht (Beaufort)
   windDir: number; // dominante windrichting (graden, waar de wind vandaan komt)
-  /**
-   * Alleen aanwezig als de modellen het significant oneens zijn over de
-   * neerslag. Bevat de vergeleken dagtotalen zélf — niet de overdag-
-   * gecorrigeerde `precip` hierboven, die enkel voor de weergave dient.
-   */
-  divergence?: { gfsPrecip: number; knmiPrecip: number };
 };
 
 /** Dagwaarden van het KNMI-model, om te middelen en te vergelijken met GFS. */
@@ -868,9 +1058,8 @@ export async function fetchDailyDetail(
     `&daily=${DETAIL_VARS}&hourly=${DETAIL_HOURLY_VARS}&forecast_days=${days}` +
     `&timezone=auto&models=gfs_seamless`;
 
-  // KNMI parallel erbij: om te middelen, om te vergelijken, en binnen de
-  // Benelux als leidend model voor de neerslag. Mislukt die, dan tonen we
-  // gewoon GFS zonder middeling en zonder markering.
+  // KNMI parallel erbij: om te middelen, en binnen de Benelux als leidend
+  // model voor de neerslag. Mislukt die, dan blijft GFS over.
   const [res, knmiData] = await Promise.all([
     fetch(url),
     fetchKnmiDayValues(point, days),
@@ -907,8 +1096,7 @@ export async function fetchDailyDetail(
       : d.weather_code[i] ?? 0;
 
     // Temperatuur en zon: gemiddelde van GFS en KNMI. Neerslag niet middelen —
-    // bij grote onenigheid tonen we in plaats daarvan een markering.
-    const gfsPrecipDay = d.precipitation_sum[i] ?? 0;
+    // het gemiddelde van 0 en 10 mm is een dag die geen van beide voorspelt.
     const gfsSunFraction = dayLight > 0 ? clamp(sunSec / dayLight, 0, 1) : 0;
 
     return {
@@ -922,10 +1110,6 @@ export async function fetchDailyDetail(
       sunFraction: meanOf(gfsSunFraction, knmi?.sunFraction),
       windBft: windToBeaufort(d.wind_speed_10m_max[i] ?? 0),
       windDir: d.wind_direction_10m_dominant[i] ?? 0,
-      divergence:
-        knmi && Math.abs(gfsPrecipDay - knmi.precip) > RAIN_DIVERGENCE_MM
-          ? { gfsPrecip: gfsPrecipDay, knmiPrecip: knmi.precip }
-          : undefined,
     };
   });
 }

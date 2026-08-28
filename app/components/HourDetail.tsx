@@ -6,6 +6,8 @@ import { RainButton } from "./RainButton";
 import {
   conditionFromHourDayNight,
   fetchHourly,
+  fetchMinutelyForecast,
+  mergeNowcastIntoHours,
   type HourForecast,
 } from "../lib/weather";
 
@@ -38,8 +40,14 @@ export function HourDetail({
     let active = true;
     setHours(null);
     setError(false);
-    fetchHourly(place, date)
-      .then((h) => active && setHours(h))
+    // De regen-radar weet over de eerstkomende uren meer dan het weermodel; die
+    // uren tonen we met haar cijfers, zodat deze lijst hetzelfde zegt als de
+    // Regen-Radar. Is de radar er niet, dan blijft het model gewoon staan.
+    Promise.all([
+      fetchHourly(place, date),
+      fetchMinutelyForecast(place).catch(() => null),
+    ])
+      .then(([h, nowcast]) => active && setHours(mergeNowcastIntoHours(h, nowcast)))
       .catch(() => active && setError(true));
     return () => {
       active = false;

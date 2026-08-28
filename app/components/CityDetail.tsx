@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import { HourDetail } from "./HourDetail";
 import { RainButton } from "./RainButton";
-import { DivergenceModal } from "./DivergenceModal";
 import {
   conditionFromDay,
   fetchDailyDetail,
@@ -66,8 +65,6 @@ export function CityDetail({
   const [error, setError] = useState(false);
   // Aangeklikte dag → uur-detail (over de daglijst).
   const [openDate, setOpenDate] = useState<string | null>(null);
-  // Aangeklikte divergentie-markering → uitleg welke modellen afwijken.
-  const [divergenceDay, setDivergenceDay] = useState<DailyDetail | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -151,12 +148,7 @@ export function CityDetail({
         ) : (
           <ul>
             {days.map((d) => (
-              <DayRow
-                key={d.date}
-                d={d}
-                onOpen={setOpenDate}
-                onDivergence={setDivergenceDay}
-              />
+              <DayRow key={d.date} d={d} onOpen={setOpenDate} />
             ))}
           </ul>
         )}
@@ -171,16 +163,6 @@ export function CityDetail({
           onClose={() => setOpenDate(null)}
         />
       )}
-
-      {divergenceDay?.divergence && (
-        <DivergenceModal
-          gfsPrecip={divergenceDay.divergence.gfsPrecip}
-          knmiPrecip={divergenceDay.divergence.knmiPrecip}
-          point={place}
-          dateLabel={`${fmtWeekday(divergenceDay.date)} ${fmtDayMonth(divergenceDay.date)}`}
-          onClose={() => setDivergenceDay(null)}
-        />
-      )}
     </div>
   );
 }
@@ -188,11 +170,9 @@ export function CityDetail({
 function DayRow({
   d,
   onOpen,
-  onDivergence,
 }: {
   d: DailyDetail;
   onOpen: (date: string) => void;
-  onDivergence: (d: DailyDetail) => void;
 }) {
   const cond = conditionFromDay(d);
   const hasRain = d.precip > 0;
@@ -254,27 +234,8 @@ function DayRow({
 
       </button>
 
-      {/* Modellen oneens over de regen. Vaste sleuf tussen de zonuren en de
-          windroos: ook zónder markering blijft hij gereserveerd, zodat de
-          windroos op elke rij op dezelfde plaats staat. Eigen knop náást de
-          rij-knop (knoppen mogen niet nesten), over de volle rijhoogte zodat
-          hij op een touchscreen te raken is. */}
-      <div className="w-11 shrink-0 flex items-stretch">
-        {d.divergence && (
-          <button
-            onClick={() => onDivergence(d)}
-            aria-label={`Modellen oneens over de regen op ${fmtWeekday(d.date)} ${fmtDayMonth(d.date)} — bekijk uitleg`}
-            className="w-full flex items-center justify-center active-press"
-          >
-            <span className="w-6 h-6 rounded-full bg-secondary-container text-on-secondary-container flex items-center justify-center text-[13px] font-bold">
-              ⚠
-            </span>
-          </button>
-        )}
-      </div>
-
-      {/* Wind: pijl in de stroomrichting + Beaufort. Staat buiten de rij-knop
-          zodat de sleuf hierboven ertussen past. */}
+      {/* Wind: pijl in de stroomrichting + Beaufort. Staat buiten de rij-knop,
+          zodat de windroos op elke rij op dezelfde plaats blijft staan. */}
       <div className="w-11 shrink-0 flex flex-col items-center justify-center text-on-surface-variant leading-none pointer-events-none">
         <Icon
           name="navigation"

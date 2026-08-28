@@ -1,7 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { type MinutelyData } from "../lib/weather";
+import { useCallback, useEffect, useRef, type CSSProperties } from "react";
+import {
+  RAIN_ALERT_MMH,
+  rainIntensity,
+  type MinutelyData,
+  type RainPoint,
+} from "../lib/weather";
 
 const LINE = "#5f8091";
 const ACCENT = "#9d3d22";
@@ -9,9 +14,17 @@ const GRID = "#dcdcdc";
 const GRIDLIGHT = "#efefef";
 const AXIS = "#888";
 
-/** Ronde bovengrens voor de y-as (mm/u), zodat de schaal netjes oogt. */
+/** Hoogte van de grafiek in CSS-pixels. */
+const CHART_H = 180;
+/** Aandeel van de breedte voor het fijne deel: het komende uur telt het zwaarst. */
+const FINE_WIDTH = 0.5;
+/** Ruimte die één tijdlabel minstens nodig heeft. */
+const LABEL_PX = 44;
+
+/** Ronde bovengrens voor de y-as (mm/u), zodat de schaal netjes oogt. Motregen
+ *  zit rond 0,2 mm/u, dus onderaan moeten de stappen fijn blijven. */
 function niceMax(v: number): number {
-  const steps = [1, 2, 3, 5, 8, 10, 15, 20, 30, 40, 50, 75, 100];
+  const steps = [0.2, 0.5, 1, 2, 3, 5, 8, 10, 15, 20, 30, 40, 50, 75, 100];
   for (const s of steps) if (v <= s) return s;
   return Math.ceil(v / 50) * 50;
 }
@@ -23,6 +36,34 @@ function niceMax(v: number): number {
 const clockHour = (iso: string) => `${Number(iso.slice(11, 13))}u`;
 /** Uur:minuut uit een ISO-tijd ("2026-07-17T09:45" → "09:45"). */
 const clockTime = (iso: string) => iso.slice(11, 16);
+/** Minuut binnen het uur ("2026-07-17T09:45" → 45). */
+const clockMinute = (iso: string) => Number(iso.slice(14, 16));
+/** Getal met komma, zoals de rest van de app. */
+const nlNum = (v: number, dec: number) => v.toFixed(dec).replace(".", ",");
+
+/**
+ * Samenvatting boven de grafiek: wanneer begint de regen? Fijne punten en uren
+ * worden op dezelfde drempel beoordeeld (intensiteit in mm/u), anders meldt de
+ * tekst regen die de grafiek niet toont — of omgekeerd.
+ */
+function rainSummary(data: MinutelyData): string {
+  const wet = (p: RainPoint) => rainIntensity(p) >= RAIN_ALERT_MMH;
+  const firstFine = data.nextHour.find(wet);
+  if (firstFine && firstFine.minutesAhead <= 0) return "Het regent nu";
+  if (firstFine) return `Over ± ${firstFine.minutesAhead} minuten begint regen`;
+
+  const hr = data.nextHours.find(wet);
+  if (!hr) return "Geen regen verwacht de komende uren";
+  return `Regen verwacht over ± ${Math.max(1, Math.round(hr.minutesAhead / 60))} uur`;
+}
+
+/** Houdt zoveel labels over dat ze niet op elkaar botsen (altijd de eerste). */
+function thinOut<T>(items: T[], widthPx: number): T[] {
+  if (items.length === 0) return items;
+  const fits = Math.max(1, Math.floor(widthPx / LABEL_PX));
+  const step = Math.ceil(items.length / fits);
+  return items.filter((_, i) => i % step === 0);
+}
 
 export function RainOverlay({
   data,
@@ -36,43 +77,34 @@ export function RainOverlay({
   topPx?: number; // indien gezet: zweeft bovenaan (net onder de kaartknoppen)
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [subtitle, setSubtitle] = useState("");
 
-  // Samenvatting boven de grafiek: wanneer begint de regen?
-  useEffect(() => {
-    if (!data) return;
-    const firstWet = data.nextHour.find((m) => m.precip > 0.05);
-    if (firstWet && firstWet.minute <= 0) {
-      setSubtitle("Het regent nu");
-    } else if (firstWet) {
-      setSubtitle(`Over ± ${firstWet.minute} minuten begint regen`);
-    } else {
-      const hr = data.nextHours.find((x) => x.precip > 0.1);
-      if (hr) {
-        setSubtitle(`Regen verwacht over ± ${hr.hoursAhead} uur`);
-      } else {
-        setSubtitle("Geen regen verwacht de komende uren");
-      }
-    }
-  }, [data]);
-
-  // Grafiek tekenen: minuten (lijn) links, uren (staafjes) rechts.
-  useEffect(() => {
-    if (!canvasRef.current || !data) return;
-    const ctx = canvasRef.current.getContext("2d");
+  /**
+   * Tekent één doorlopende curve over de hele periode. Beide delen staan op
+   * dezelfde y-as (intensiteit in mm/u) en op dezelfde tijdas, en elk punt komt
+   * in het midden van zijn eigen tijdvak te liggen. Alleen de tijdschaal
+   * verandert halverwege: het komende uur krijgt de helft van de breedte,
+   * omdat dat het deel is waar je iets aan hebt.
+   */
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !data) return;
+    const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    const w = canvasRef.current.width;
-    const h = canvasRef.current.height;
-    ctx.clearRect(0, 0, w, h);
+    const w = canvas.clientWidth || 300;
+    // Scherpe lijnen op een telefoon: de canvas-buffer volgt de pixeldichtheid,
+    // maar we tekenen in gewone CSS-pixels.
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    canvas.width = Math.round(w * dpr);
+    canvas.height = Math.round(CHART_H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, w, h);
+    ctx.fillRect(0, 0, w, CHART_H);
 
-    // Alles omgerekend naar intensiteit mm/u: kwartier-neerslag (mm/15min) × 4,
-    // uur-neerslag staat al in mm/u. Zo staan beide delen op dezelfde schaal.
-    const minInt = data.nextHour.map((m) => m.precip * 4);
-    const hrInt = data.nextHours.map((x) => x.precip);
-    const maxRain = niceMax(Math.max(0, ...minInt, ...hrInt));
+    const fine = data.nextHour;
+    const hours = data.nextHours;
+    const all = [...fine, ...hours];
+    if (all.length === 0) return;
 
     // Vlak-indeling.
     const padL = 34;
@@ -82,24 +114,33 @@ export function RainOverlay({
     const gx0 = padL;
     const gx1 = w - padR;
     const gy0 = padT;
-    const gy1 = h - padB;
+    const gy1 = CHART_H - padB;
     const gW = gx1 - gx0;
     const gH = gy1 - gy0;
 
-    const gap = 12; // ruimte rond de scheidingslijn
-    const minFrac = 0.5; // aandeel breedte voor het eerste uur (kwartieren)
-    const minW = (gW - gap) * minFrac;
-    const minX0 = gx0;
-    const minX1 = gx0 + minW;
-    const hrX0 = minX1 + gap;
-    const hrX1 = gx1;
-    const hrW = hrX1 - hrX0;
-    const divX = minX1 + gap / 2;
+    // Tijdas in minuten vanaf nu: van het begin van het eerste tijdvak tot het
+    // einde van het laatste. De naad ligt op het einde van het fijne deel —
+    // waar het uur-deel exact begint, zodat de lijn doorloopt.
+    const t0 = all[0].minutesAhead;
+    const lastFine = fine[fine.length - 1];
+    const lastAll = all[all.length - 1];
+    const split = lastFine ? lastFine.minutesAhead + lastFine.spanMinutes : t0;
+    const tEnd = lastAll.minutesAhead + lastAll.spanMinutes;
 
+    const fineSpan = split - t0;
+    const hourSpan = tEnd - split;
+    const fineFrac = fineSpan > 0 ? (hourSpan > 0 ? FINE_WIDTH : 1) : 0;
+    const xFor = (t: number) => {
+      if (fineSpan > 0 && t <= split)
+        return gx0 + gW * fineFrac * ((t - t0) / fineSpan);
+      if (hourSpan <= 0) return gx0 + gW * fineFrac;
+      return gx0 + gW * fineFrac + gW * (1 - fineFrac) * ((t - split) / hourSpan);
+    };
+
+    const maxRain = niceMax(Math.max(0, ...all.map(rainIntensity)));
     const yFor = (v: number) => gy1 - (gH * v) / maxRain;
 
-    // Horizontale hulplijnen: fijne verdeling (8), met de hoofdlijnen (4) wat
-    // donkerder. Labels enkel op de hoofdlijnen.
+    // Horizontale hulplijnen: fijne verdeling (8), hoofdlijnen (4) donkerder.
     ctx.lineWidth = 1;
     for (let i = 0; i <= 8; i++) {
       const y = gy0 + (gH * i) / 8;
@@ -110,139 +151,101 @@ export function RainOverlay({
       ctx.stroke();
     }
 
-    // Verticale hulplijnen: elk kwartier in het minuut-deel, en bij elk uur-vak.
+    // Verticale hulplijnen: elk kwartier in het fijne deel, elk heel uur daarna.
     ctx.strokeStyle = GRIDLIGHT;
-    for (let v = 15; v < 60; v += 15) {
-      const x = minX0 + (minW * v) / 60;
+    const marks = [
+      ...fine.filter((p) => clockMinute(p.time) % 15 === 0),
+      ...hours,
+    ];
+    for (const p of marks) {
+      const x = xFor(p.minutesAhead);
       ctx.beginPath();
       ctx.moveTo(x, gy0);
       ctx.lineTo(x, gy1);
       ctx.stroke();
     }
-    if (hrInt.length > 0) {
-      const slot = hrW / hrInt.length;
-      for (let i = 0; i <= hrInt.length; i++) {
-        const x = hrX0 + i * slot;
-        ctx.beginPath();
-        ctx.moveTo(x, gy0);
-        ctx.lineTo(x, gy1);
-        ctx.stroke();
-      }
-    }
 
     // Y-labels (mm/u) op de hoofdlijnen.
+    const dec = maxRain <= 0.5 ? 2 : maxRain <= 3 ? 1 : 0;
     ctx.font = "12px sans-serif";
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
     ctx.fillStyle = AXIS;
     for (let i = 0; i <= 4; i++) {
       const y = gy0 + (gH * i) / 4;
-      const val = (maxRain * (4 - i)) / 4;
-      ctx.fillText(val.toFixed(maxRain <= 3 ? 1 : 0), gx0 - 5, y);
+      ctx.fillText(nlNum((maxRain * (4 - i)) / 4, dec), gx0 - 5, y);
     }
-    // Eenheid linksboven (iets hoger dan voorheen).
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
     ctx.fillText("mm/u", 2, 0);
 
-    // ── Vloeiende curve: minuten-deel
-    if (data.nextHour.length > 0) {
-      const points = data.nextHour
-        .filter((m) => m.minute >= 0 && m.minute <= 60)
-        .map((m) => ({
-          x: minX0 + (minW * Math.min(60, m.minute)) / 60,
-          y: yFor(minInt[data.nextHour.indexOf(m)]),
-        }));
+    // ── Eén curve over beide delen ───────────────────────────────────────
+    // Elk punt in het midden van zijn tijdvak; de lijn loopt vlak door naar de
+    // randen, zodat het eerste en laatste tijdvak volledig zichtbaar zijn.
+    const pts = all.map((p) => ({
+      x: xFor(p.minutesAhead + p.spanMinutes / 2),
+      y: yFor(rainIntensity(p)),
+    }));
+    const path = [
+      { x: xFor(t0), y: pts[0].y },
+      ...pts,
+      { x: xFor(tEnd), y: pts[pts.length - 1].y },
+    ];
 
-      if (points.length > 0) {
-        // Gefilled area onder de curve
-        ctx.fillStyle = LINE + "33"; // transparant
-        ctx.beginPath();
-        ctx.moveTo(points[0].x, gy1);
-        points.forEach((p) => ctx.lineTo(p.x, p.y));
-        ctx.lineTo(points[points.length - 1].x, gy1);
-        ctx.closePath();
-        ctx.fill();
-
-        // Lijn
-        ctx.strokeStyle = LINE;
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.moveTo(points[0].x, points[0].y);
-        for (let i = 1; i < points.length; i++) {
-          ctx.lineTo(points[i].x, points[i].y);
-        }
-        ctx.stroke();
-      }
-    }
-
-    // ── Uur-deel: vloeiende curve ───────────────────────────────────────
-    const nHr = hrInt.length;
-    if (nHr > 1) {
-      const hrPoints = [];
-      for (let i = 0; i < nHr; i++) {
-        hrPoints.push({
-          x: hrX0 + (i + 0.5) * (hrW / nHr),
-          y: yFor(hrInt[i]),
-        });
-      }
-
-      // Gefilled area
-      ctx.fillStyle = LINE + "33";
-      ctx.beginPath();
-      ctx.moveTo(hrPoints[0].x, gy1);
-      hrPoints.forEach((p) => ctx.lineTo(p.x, p.y));
-      ctx.lineTo(hrPoints[hrPoints.length - 1].x, gy1);
-      ctx.closePath();
-      ctx.fill();
-
-      // Lijn
-      ctx.strokeStyle = LINE;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(hrPoints[0].x, hrPoints[0].y);
-      for (let i = 1; i < hrPoints.length; i++) {
-        ctx.lineTo(hrPoints[i].x, hrPoints[i].y);
-      }
-      ctx.stroke();
-    }
-
-    // ── Scheidingslijn tussen minuten en uren ────────────────────────────
-    ctx.strokeStyle = ACCENT;
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([3, 3]);
+    ctx.fillStyle = LINE + "33";
     ctx.beginPath();
-    ctx.moveTo(divX, gy0);
-    ctx.lineTo(divX, gy1);
-    ctx.stroke();
-    ctx.setLineDash([]);
+    ctx.moveTo(path[0].x, gy1);
+    path.forEach((p) => ctx.lineTo(p.x, p.y));
+    ctx.lineTo(path[path.length - 1].x, gy1);
+    ctx.closePath();
+    ctx.fill();
 
-    // ── X-labels ─────────────────────────────────────────────────────────
+    ctx.strokeStyle = LINE;
+    ctx.lineWidth = 2;
+    ctx.lineJoin = "round";
+    ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+    for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+    ctx.stroke();
+
+    // Naad: waar de fijne punten overgaan in hele uren. Enkel een merkteken —
+    // de curve zelf loopt eroverheen door.
+    if (fineSpan > 0 && hourSpan > 0) {
+      ctx.strokeStyle = ACCENT + "66";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.beginPath();
+      ctx.moveTo(xFor(split), gy0);
+      ctx.lineTo(xFor(split), gy1);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    // ── X-labels: echte kloktijden, op de hulplijnen ─────────────────────
     ctx.fillStyle = AXIS;
     ctx.font = "11px sans-serif";
-    ctx.textBaseline = "alphabetic";
-    const ly = h - 8;
-
-    // Minuut-deel: echte lokale tijd per kwartier (max 4 labels binnen het
-    // eerste uur), gecentreerd onder het midden van elk balkje zodat ze niet
-    // overlappen. We lezen de tijd rechtstreeks uit elk kwartierpunt.
     ctx.textAlign = "center";
-    for (let i = 0; i < Math.min(4, data.nextHour.length); i++) {
-      const cx = minX0 + (minW * (i * 15 + 7.5)) / 60;
-      ctx.fillText(clockTime(data.nextHour[i].time), cx, ly);
-    }
+    ctx.textBaseline = "alphabetic";
+    const ly = CHART_H - 8;
 
-    // Uur-deel: klok-uur onder elke staaf (om-en-om bij krappe ruimte).
-    if (nHr > 0) {
-      const slot = hrW / nHr;
-      const skip = slot < 24;
-      for (let i = 0; i < nHr; i++) {
-        if (skip && i % 2 === 1) continue;
-        const cx = hrX0 + i * slot + slot / 2;
-        ctx.fillText(clockHour(data.nextHours[i].time), cx, ly);
-      }
+    const fineLabels = thinOut(
+      fine.filter((p) => clockMinute(p.time) % 15 === 0),
+      gW * fineFrac,
+    );
+    for (const p of fineLabels) {
+      ctx.fillText(clockTime(p.time), xFor(p.minutesAhead), ly);
+    }
+    const hourLabels = thinOut(hours, gW * (1 - fineFrac));
+    for (const p of hourLabels) {
+      ctx.fillText(clockHour(p.time), xFor(p.minutesAhead), ly);
     }
   }, [data]);
+
+  useEffect(() => {
+    draw();
+    window.addEventListener("resize", draw);
+    return () => window.removeEventListener("resize", draw);
+  }, [draw]);
 
   if (!data) return null;
 
@@ -252,6 +255,9 @@ export function RainOverlay({
     topPx != null
       ? { position: "absolute", top: `${topPx}px` }
       : { position: "fixed", bottom: "0.75rem" };
+
+  const fineStep = data.nextHour[0]?.spanMinutes ?? 15;
+  const subtitle = rainSummary(data);
 
   return (
     <div
@@ -308,21 +314,18 @@ export function RainOverlay({
       {/* Grafiek */}
       <canvas
         ref={canvasRef}
-        width={typeof window !== "undefined" ? window.innerWidth - 64 : 300}
-        height={180}
         style={{
           border: "1px solid #eee",
           borderRadius: "8px",
           marginBottom: "0.75rem",
           width: "100%",
+          height: `${CHART_H}px`,
         }}
       />
 
       {/* Legenda-regel */}
       <p style={{ margin: 0, fontSize: "12px", color: "#999" }}>
-        {data?.hasBuienradar === true
-          ? "Komend uur per 5 min · daarna per uur (± 8 u vooruit)"
-          : "Komend uur per 15 min · daarna per uur (± 8 u vooruit)"}
+        Komend uur per {fineStep} min · daarna per uur (± 8 u vooruit)
       </p>
     </div>
   );

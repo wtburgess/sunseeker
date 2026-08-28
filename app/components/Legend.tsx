@@ -193,21 +193,9 @@ export function Legend({ onClose }: { onClose: () => void }) {
           text={
             <>
               Niet gemiddeld: het gemiddelde van 0 en 10 mm zou een dag opleveren
-              die geen van beide modellen voorspelt. In de{" "}
-              <strong>Benelux</strong> tonen we <strong>KNMI</strong>, het lokale
-              hoge-resolutie model; daarbuiten <strong>GFS</strong>.
-            </>
-          }
-        />
-        <InfoRow
-          icon="warning"
-          iconColor="text-secondary"
-          title="Driehoekje"
-          text={
-            <>
-              Verschillen de modellen meer dan 1 mm over een dag, dan verschijnt
-              in de daglijst een driehoekje. Tik erop voor beide waarden — die
-              dag is minder zeker dan de andere.
+              die geen van beide modellen voorspelt. Je ziet altijd het model dat
+              in die streek het betrouwbaarst is — in de <strong>Benelux</strong>{" "}
+              het lokale hoge-resolutie model, daarbuiten het wereldmodel.
             </>
           }
         />
@@ -216,9 +204,10 @@ export function Legend({ onClose }: { onClose: () => void }) {
           title="Regen-Radar"
           text={
             <>
-              In Nederland <strong>Buienradar</strong>, per 5 minuten; elders
-              Open-Meteo per 15 minuten. Daarna beide per uur, tot ±8 uur
-              vooruit.
+              In Nederland en België <strong>Buienradar</strong>, per 5 minuten;
+              elders Open-Meteo per 15 minuten. Daarna beide per uur, tot ±8 uur
+              vooruit. Ziet de radar regen, dan volgt de uurlijst diezelfde
+              cijfers.
             </>
           }
         />

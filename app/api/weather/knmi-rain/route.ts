@@ -2,287 +2,222 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-interface MinutelyPoint {
-  time: string;
-  minute: number;
-  precip: number;
+/**
+ * Eén tijdvak uit de regenverwachting. Zelfde vorm als `RainPoint` in
+ * `app/lib/weather.ts`: het fijne deel (5 min) en de uren erna verschillen
+ * enkel in `spanMinutes`, zodat de client beide op één schaal kan zetten.
+ */
+interface RainPoint {
+  time: string; // lokale kloktijd "2026-08-28T14:35" (geen offset-marker)
+  minutesAhead: number; // minuten vanaf nu tot het begin van dit tijdvak
+  spanMinutes: number; // 5 (radar) of 60 (uur)
+  precip: number; // mm in dat tijdvak
+  precipProb: number; // % kans (radar geeft die niet → 0)
 }
 
-interface HourlyPoint {
-  time: string;
-  hoursAhead: number;
-  precip: number;
-}
+/** Intern: hetzelfde punt, met de echte epoch erbij om op te kunnen rekenen. */
+type TimedPoint = RainPoint & { startMs: number };
 
-interface MinutelyData {
-  nextHour: MinutelyPoint[];
-  nextHours: HourlyPoint[];
-  hasBuienradar?: boolean; // true if BUIENRADAR data is available
+interface NowcastData {
+  now: RainPoint;
+  nextHour: RainPoint[];
+  nextHours: RainPoint[];
+  hasBuienradar: boolean;
 }
 
 /**
- * BUIENRADAR 5-minute precipitation nowcast
- * Uses the public BUIENRADAR API (no authentication required)
- * Returns precipitation in mm/hour for next 2 hours at 5-minute resolution
- *
- * Note: KNMI EDR API alternative available if you register for a key:
- * Email opendata@knmi.nl to request access (takes ~2 working days)
+ * Buienradar geeft de tijden in Nederlandse kloktijd, ongeacht waar de server
+ * staat en ook voor Belgische coördinaten — België loopt op dezelfde klok.
  */
-async function fetchBuienradarNowcast(
-  lat: number,
-  lon: number
-): Promise<MinutelyData | null> {
-  try {
-    // BUIENRADAR public API - no key required
-    // Note: trailing slash required, coordinates rounded to 2 decimals
-    const roundedLat = Math.round(lat * 100) / 100;
-    const roundedLon = Math.round(lon * 100) / 100;
-    const response = await fetch(
-      `https://gpsgadget.buienradar.nl/data/raintext/?lat=${roundedLat}&lon=${roundedLon}`,
-      { signal: AbortSignal.timeout(5000) }
-    );
+const NL_TZ = "Europe/Amsterdam";
 
-    if (!response.ok) {
-      console.debug(`[Buienradar] API error: ${response.status}`);
+/** Nederlandse kloktijd van dit moment + de bijhorende UTC-offset. */
+function dutchNow(at: Date) {
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: NL_TZ,
+      hour12: false,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    })
+      .formatToParts(at)
+      .map((p) => [p.type, p.value]),
+  ) as Record<string, string>;
+
+  const hour = Number(parts.hour) % 24; // "24:00" komt voor bij middernacht
+  const date = `${parts.year}-${parts.month}-${parts.day}`;
+  const asUtc = Date.UTC(
+    Number(parts.year),
+    Number(parts.month) - 1,
+    Number(parts.day),
+    hour,
+    Number(parts.minute),
+    Number(parts.second),
+  );
+  return {
+    date, // "2026-08-28"
+    minutesOfDay: hour * 60 + Number(parts.minute),
+    offsetSec: Math.round((asUtc - at.getTime()) / 1000),
+  };
+}
+
+/** Eén dag later, als kale datumstring. */
+const nextDay = (date: string) =>
+  new Date(Date.parse(`${date}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+
+/**
+ * Buienradar geeft de neerslag op een schaal van 0–255, niet in millimeters.
+ * De officiële omrekening is logaritmisch: waarde 109 is 1 mm/u, elke 32
+ * stappen erbij vermenigvuldigt met tien. Lineair delen (zoals eerder) maakte
+ * van een lichte bui tientallen millimeters — waardoor het radar-deel van de
+ * grafiek niet te vergelijken was met de uurwaarden ernaast.
+ */
+function buienradarMmPerHour(value: number): number {
+  const mmh = Math.pow(10, (value - 109) / 32);
+  return mmh < 0.02 ? 0 : mmh; // onder de meetdrempel: droog
+}
+
+/**
+ * Buienradar-nowcast: 24 punten van 5 minuten, twee uur vooruit. Publieke API,
+ * geen sleutel nodig; regels zien eruit als "077|14:35". Het radarbeeld dekt
+ * Nederland en België; daarbuiten antwoordt de API met 404 en valt de client
+ * terug op Open-Meteo.
+ */
+async function fetchBuienradar(lat: number, lon: number): Promise<TimedPoint[] | null> {
+  try {
+    // Trailing slash is verplicht; coördinaten op 2 decimalen.
+    const url =
+      `https://gpsgadget.buienradar.nl/data/raintext/` +
+      `?lat=${Math.round(lat * 100) / 100}&lon=${Math.round(lon * 100) / 100}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+    if (!res.ok) {
+      console.debug(`[Buienradar] HTTP ${res.status}`);
       return null;
     }
-
-    const text = await response.text();
-    const buienradarData = parseBuienradarResponse(text);
-    return buienradarData;
+    return parseBuienradar(await res.text());
   } catch (err) {
-    console.debug("[Buienradar] Fetch failed:", err instanceof Error ? err.message : String(err));
+    console.debug("[Buienradar] mislukt:", err instanceof Error ? err.message : String(err));
     return null;
   }
 }
 
-function parseBuienradarResponse(text: string): MinutelyData | null {
-  try {
-    // BUIENRADAR format: lines of "time|precipitation_mm_per_hour"
-    // Example: "2026-08-04T20:00:00|0.3"
-    // Data is 5-minute intervals for 120 minutes
-    const lines = text.trim().split("\n").filter(line => line.length > 0);
-    if (lines.length === 0) return null;
+function parseBuienradar(text: string): TimedPoint[] | null {
+  const now = new Date();
+  const nl = dutchNow(now);
+  const points: TimedPoint[] = [];
 
-    const now = new Date();
-    const nextHour: MinutelyPoint[] = [];
-    const nextHours: Array<{ time: string; hoursAhead: number; precip: number }> = [];
-    const hourlyTotals: Map<number, { sum: number; count: number; time: string }> = new Map();
+  for (const line of text.trim().split("\n")) {
+    const [valueStr, timeStr] = line.split("|");
+    if (!valueStr || !timeStr) continue;
 
-    lines.forEach((line: string) => {
-      const [precipStr, timeStr] = line.split("|");
-      if (!precipStr || !timeStr) return;
+    const [hh, mm] = timeStr.trim().split(":").map(Number);
+    if (!Number.isFinite(hh) || !Number.isFinite(mm)) continue;
 
-      // BUIENRADAR format: precipitation is in 0-255 scale (0=dry, 255=heavy rain)
-      // Convert to mm/hour: roughly 0-200 maps to 0-100mm/hr
-      const precipValue = parseInt(precipStr.trim(), 10) || 0;
-      const precip = (precipValue / 2.55); // Scale to mm/hour
+    // Buienradar geeft alleen HH:MM. De reeks loopt altijd vooruit, dus een
+    // tijd die "vroeger" lijkt dan nu hoort bij morgen — zonder die correctie
+    // valt de hele grafiek weg zodra de reeks over middernacht heen loopt.
+    const minutesOfDay = hh * 60 + mm;
+    const minutesAhead = (minutesOfDay - nl.minutesOfDay + 1440) % 1440;
+    if (minutesAhead > 130) continue; // ligt achter ons, niet in de toekomst
+    const date = minutesOfDay < nl.minutesOfDay ? nextDay(nl.date) : nl.date;
 
-      // Parse time: BUIENRADAR gives HH:MM in local time, build today's date
-      const [hours, mins] = timeStr.trim().split(":");
-      const time = new Date(now);
-      time.setHours(parseInt(hours, 10), parseInt(mins, 10), 0, 0);
-
-      // Check if this timestamp makes sense (not too far in future)
-      const minutesAhead = Math.round((time.getTime() - now.getTime()) / 60000);
-      if (minutesAhead < 0 || minutesAhead > 125) return;
-
-      const isoTime = time.toISOString().slice(0, 16);
-      const hoursAhead = Math.round(minutesAhead / 60);
-
-      // First 2 hours: 5-minute resolution (BUIENRADAR nowcast)
-      if (minutesAhead <= 120) {
-        nextHour.push({
-          time: isoTime,
-          minute: Math.max(0, minutesAhead),
-          precip: precip / 12, // Convert mm/hour → mm/5min
-        });
-      }
-
-      // Aggregate hourly data (average intensity over the hour)
-      // All hours for BUIENRADAR (will be extended with Open-Meteo fallback later)
-      if (hoursAhead > 0 && hoursAhead <= 8) {
-        if (!hourlyTotals.has(hoursAhead)) {
-          hourlyTotals.set(hoursAhead, { sum: 0, count: 0, time: isoTime });
-        }
-        const hourData = hourlyTotals.get(hoursAhead)!;
-        hourData.sum += precip;
-        hourData.count += 1;
-      }
+    const time = `${date}T${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+    points.push({
+      time,
+      startMs: Date.parse(`${time}Z`) - nl.offsetSec * 1000,
+      minutesAhead,
+      spanMinutes: 5,
+      precip: buienradarMmPerHour(Number(valueStr.trim()) || 0) / 12, // mm/u → mm per 5 min
+      precipProb: 0,
     });
-
-    // Convert hourly aggregates to array
-    const hourlyArray: Array<{ time: string; hoursAhead: number; precip: number }> = [];
-    hourlyTotals.forEach((data, hoursAhead) => {
-      const avgPrecip = data.count > 0 ? data.sum / data.count : 0;
-      hourlyArray.push({
-        time: data.time,
-        hoursAhead,
-        precip: avgPrecip,
-      });
-    });
-    hourlyArray.sort((a, b) => a.hoursAhead - b.hoursAhead);
-
-    return {
-      nextHour: nextHour.slice(0, 24), // 5-min points for ~120 min (BUIENRADAR coverage)
-      nextHours: hourlyArray.slice(0, 8), // Up to 8 hourly points
-    };
-  } catch (err) {
-    console.debug("[Buienradar] Parse error:", err instanceof Error ? err.message : String(err));
-    return null;
   }
+
+  points.sort((a, b) => a.minutesAhead - b.minutesAhead);
+  return points.length > 0 ? points : null;
+}
+
+/**
+ * Uurlijkse neerslag van Open-Meteo, voor het deel ná de radar. Zonder
+ * `models` kiest Open-Meteo per regio zelf het beste model — in Nederland is
+ * dat hetzelfde KNMI-model dat de dag- en uurlijst gebruiken.
+ */
+async function fetchHourlyTail(
+  lat: number,
+  lon: number,
+  nowMs: number,
+  fromMs: number,
+): Promise<TimedPoint[]> {
+  const url =
+    `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+    `&hourly=precipitation,precipitation_probability&forecast_hours=12&timezone=auto`;
+
+  const res = await fetch(url, { signal: AbortSignal.timeout(5000) });
+  if (!res.ok) return [];
+  const data = await res.json();
+  const h = data.hourly ?? {};
+
+  // `timezone=auto` geeft lokale tijden zónder offset-marker; via
+  // `utc_offset_seconds` rekenen we naar de echte epoch.
+  const offsetSec: number = data.utc_offset_seconds ?? 0;
+  const out: TimedPoint[] = [];
+  for (let i = 0; i < (h.time?.length ?? 0); i++) {
+    const startMs = Date.parse(`${h.time[i]}Z`) - offsetSec * 1000;
+    if (startMs < fromMs) continue;
+    out.push({
+      time: h.time[i],
+      startMs,
+      minutesAhead: Math.round((startMs - nowMs) / 60000),
+      spanMinutes: 60,
+      precip: h.precipitation?.[i] ?? 0,
+      precipProb: h.precipitation_probability?.[i] ?? 0,
+    });
+    if (out.length >= 8) break;
+  }
+  return out;
 }
 
 export async function GET(req: NextRequest) {
-  const latStr = req.nextUrl.searchParams.get("lat");
-  const lonStr = req.nextUrl.searchParams.get("lon");
-
-  if (!latStr || !lonStr) {
+  const lat = parseFloat(req.nextUrl.searchParams.get("lat") ?? "");
+  const lon = parseFloat(req.nextUrl.searchParams.get("lon") ?? "");
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
     return NextResponse.json({ error: "Missing lat/lon" }, { status: 400 });
   }
 
-  const lat = parseFloat(latStr);
-  const lon = parseFloat(lonStr);
-
-  // Try BUIENRADAR first (public, no key required)
-  const buienradarData = await fetchBuienradarNowcast(lat, lon);
-  if (buienradarData) {
-    // Fetch Open-Meteo data to extend forecast beyond 2 hours
-    const openMeteoUrl = new URL("https://api.open-meteo.com/v1/forecast");
-    openMeteoUrl.searchParams.set("latitude", lat.toString());
-    openMeteoUrl.searchParams.set("longitude", lon.toString());
-    openMeteoUrl.searchParams.set("hourly", "precipitation");
-    openMeteoUrl.searchParams.set("timezone", "auto");
-    openMeteoUrl.searchParams.set("forecast_hours", "8");
-
-    try {
-      const omRes = await fetch(openMeteoUrl.toString(), { signal: AbortSignal.timeout(5000) });
-      if (omRes.ok) {
-        const omData = await omRes.json();
-
-        if (omData.hourly?.precipitation && omData.hourly?.time) {
-          // Map Open-Meteo times to hoursAhead relative to now
-          const now = new Date();
-          const nowHours = Math.floor(now.getTime() / 3600000); // Hours since epoch
-
-          const omHourly: HourlyPoint[] = (omData.hourly.precipitation as number[])
-            .map((precip: number, idx: number): HourlyPoint => {
-              const timeStr: string = omData.hourly.time[idx];
-              const pointTime = new Date(timeStr);
-              const pointHours = Math.floor(pointTime.getTime() / 3600000);
-              const hoursAhead = pointHours - nowHours;
-
-              return {
-                time: timeStr.slice(0, 16), // ISO format without seconds
-                hoursAhead,
-                precip,
-              };
-            })
-            .filter((h: HourlyPoint) => h.hoursAhead > 0 && h.hoursAhead <= 8);
-
-          if (omHourly.length > 0) {
-            // Merge: BUIENRADAR for minutely, blend hourly data (prefer BUIENRADAR for 1-2, Open-Meteo for 3-8)
-            const buienradarHours = buienradarData.nextHours.filter((h) => h.hoursAhead >= 1 && h.hoursAhead <= 2);
-            const openMeteoHours = omHourly.filter((h) => h.hoursAhead >= 3);
-
-            // Fill any gaps in hourly data
-            const allHours = [...buienradarHours, ...openMeteoHours].sort((a, b) => a.hoursAhead - b.hoursAhead);
-
-            return NextResponse.json({
-              nextHour: buienradarData.nextHour,
-              nextHours: allHours,
-              hasBuienradar: true,
-            });
-          }
-        }
-      }
-    } catch (err) {
-      // Silently fail and return BUIENRADAR data only
-    }
-
-    return NextResponse.json({
-      ...buienradarData,
-      hasBuienradar: true,
-    });
+  const radar = await fetchBuienradar(lat, lon);
+  if (!radar) {
+    // Geen radar: de client haalt zelf de (grovere) Open-Meteo-voorspelling op.
+    return NextResponse.json(
+      { error: "Buienradar niet beschikbaar, val terug op Open-Meteo" },
+      { status: 501 },
+    );
   }
 
-  // Fallback for non-BUIENRADAR regions: fetch Open-Meteo 15-minute data
-  try {
-    const openMeteoUrl = new URL("https://api.open-meteo.com/v1/forecast");
-    openMeteoUrl.searchParams.set("latitude", lat.toString());
-    openMeteoUrl.searchParams.set("longitude", lon.toString());
-    openMeteoUrl.searchParams.set("minutely_15", "precipitation");
-    openMeteoUrl.searchParams.set("timezone", "auto");
-    openMeteoUrl.searchParams.set("forecast_minutes", "120");
+  // Naad tussen fijn en uurlijks: het eerste hele uur ná +60 min. Het fijne
+  // deel dekt dan altijd minstens het komende uur, en het uur-deel begint er
+  // exact op — geen gat en geen dubbeltelling, dus een doorlopende lijn. De
+  // naad komt uit de tijdstempels zelf; zelf uren uitrekenen loopt mis op de
+  // seconden die er sinds het hele uur voorbij zijn.
+  const nowMs = Date.now();
+  const nextHours = await fetchHourlyTail(lat, lon, nowMs, nowMs + 60 * 60 * 1000);
+  const splitMs = nextHours[0]?.startMs ?? Number.POSITIVE_INFINITY;
+  const nextHour = radar.filter((p) => p.startMs < splitMs);
 
-    const omRes = await fetch(openMeteoUrl.toString(), { signal: AbortSignal.timeout(5000) });
-    if (omRes.ok) {
-      const omData = await omRes.json();
-
-      if (omData.minutely_15?.precipitation && omData.minutely_15?.time) {
-        const now = new Date();
-        const nowMinutes = Math.floor(now.getTime() / 60000);
-
-        // Convert Open-Meteo 15-minute data to our format
-        const minutelyData: MinutelyPoint[] = (omData.minutely_15.time as string[])
-          .map((timeStr: string, idx: number): MinutelyPoint => {
-            const pointTime = new Date(timeStr);
-            const pointMinutes = Math.floor(pointTime.getTime() / 60000);
-            const minutesAhead = pointMinutes - nowMinutes;
-
-            return {
-              time: pointTime.toISOString().slice(0, 16),
-              minute: minutesAhead,
-              precip: (omData.minutely_15.precipitation[idx] || 0) / 4, // Convert mm/hour to mm/15min
-            };
-          })
-          .filter((m: MinutelyPoint) => m.minute >= 0 && m.minute <= 120);
-
-        // Also get hourly data for hours 2-8
-        const hourlyUrl = new URL("https://api.open-meteo.com/v1/forecast");
-        hourlyUrl.searchParams.set("latitude", lat.toString());
-        hourlyUrl.searchParams.set("longitude", lon.toString());
-        hourlyUrl.searchParams.set("hourly", "precipitation");
-        hourlyUrl.searchParams.set("timezone", "auto");
-        hourlyUrl.searchParams.set("forecast_hours", "8");
-
-        const hourRes = await fetch(hourlyUrl.toString(), { signal: AbortSignal.timeout(5000) });
-        if (hourRes.ok) {
-          const hourData = await hourRes.json();
-
-          if (hourData.hourly?.precipitation && hourData.hourly?.time) {
-            const omTimes = hourData.hourly.time as string[];
-            const hourlyData: HourlyPoint[] = (hourData.hourly.precipitation as number[])
-              .map((precip: number, idx: number): HourlyPoint => {
-                const timeStr = omTimes[idx];
-                const pointTime = new Date(timeStr);
-                const pointHours = Math.floor(pointTime.getTime() / 3600000);
-                const hoursAhead = pointHours - Math.floor(now.getTime() / 3600000);
-
-                return {
-                  time: timeStr.slice(0, 16),
-                  hoursAhead,
-                  precip,
-                };
-              })
-              .filter((h: HourlyPoint) => h.hoursAhead >= 2 && h.hoursAhead <= 8);
-
-            return NextResponse.json({
-              nextHour: minutelyData.slice(0, 8), // ~2 hours of 15-min data
-              nextHours: hourlyData,
-              hasBuienradar: false,
-            });
-          }
-        }
-      }
-    }
-  } catch (err) {
-    // Fall through to 501
-  }
-
-  // Final fallback: return 501 so the client fetches from Open-Meteo
-  return NextResponse.json(
-    { error: "5-minute nowcast unavailable, falling back to Open-Meteo" },
-    { status: 501 }
-  );
+  const strip = (p: TimedPoint): RainPoint => ({
+    time: p.time,
+    minutesAhead: p.minutesAhead,
+    spanMinutes: p.spanMinutes,
+    precip: p.precip,
+    precipProb: p.precipProb,
+  });
+  const data: NowcastData = {
+    now: strip(nextHour[0] ?? nextHours[0] ?? radar[0]),
+    nextHour: nextHour.map(strip),
+    nextHours: nextHours.map(strip),
+    hasBuienradar: true,
+  };
+  return NextResponse.json(data);
 }

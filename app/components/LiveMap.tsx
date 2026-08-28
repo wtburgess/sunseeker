@@ -21,6 +21,7 @@ import {
   fetchCurrents,
   fetchDailies,
   fetchMinutelyForecast,
+  nowcastHasRain,
   RATE_LIMIT,
   type CurrentWeather,
   type DayLite,
@@ -665,11 +666,9 @@ export default function LiveMap({
     }
   }, [slowNetworkDetected, favorites.length, favoritesOnly]);
 
-  // Regen alert: als er regen voorspeld wordt in de komende uren
-  const hasRainExpected = minutelyData && (
-    minutelyData.nextHour.some((m) => m.precip > 0.1) ||
-    minutelyData.nextHours.some((h) => h.precip > 0.1)
-  );
+  // Regen-alert: dezelfde drempel als de regenknop en de grafiek, zodat de
+  // kaart niet waarschuwt voor regen die de radar niet toont.
+  const hasRainExpected = nowcastHasRain(minutelyData);
 
   // Weer (nu + meerdaags) van de favorieten ophalen zodra de favorieten-weergave
   // aanstaat; buiten die weergave houden we niets bij.

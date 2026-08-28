@@ -3,7 +3,11 @@
 import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import { RainOverlay } from "./RainOverlay";
-import { fetchMinutelyForecast, type MinutelyData } from "../lib/weather";
+import {
+  fetchMinutelyForecast,
+  nowcastHasRain,
+  type MinutelyData,
+} from "../lib/weather";
 
 /**
  * Regenicoon-knop voor de detail-headers: opent de Regenvoorspelling (minuut-
@@ -32,10 +36,7 @@ export function RainButton({
     };
   }, [place]);
 
-  const rainExpected =
-    !!data &&
-    (data.nextHour.some((m) => m.precip > 0.1) ||
-      data.nextHours.some((h) => h.precip > 0.1));
+  const rainExpected = nowcastHasRain(data);
   const alert = rainExpected && !open;
 
   return (

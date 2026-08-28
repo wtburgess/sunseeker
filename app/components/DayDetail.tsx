@@ -7,6 +7,8 @@ import {
   conditionFromDay,
   conditionFromHour,
   fetchHourly,
+  fetchMinutelyForecast,
+  mergeNowcastIntoHours,
   rainIcon,
   type DayForecast,
   type HourForecast,
@@ -50,7 +52,13 @@ function DayRow({ day, city }: { day: DayForecast; city: City }) {
       setLoading(true);
       setError(false);
       try {
-        setHours(await fetchHourly(city, day.date));
+        // Zelfde samenvoeging als in het uur-detail: waar de regen-radar de
+        // uren dekt, tonen we haar cijfers in plaats van die van het model.
+        const [h, nowcast] = await Promise.all([
+          fetchHourly(city, day.date),
+          fetchMinutelyForecast(city).catch(() => null),
+        ]);
+        setHours(mergeNowcastIntoHours(h, nowcast));
       } catch {
         setError(true);
       } finally {
